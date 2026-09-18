@@ -1,0 +1,215 @@
+# Ответственный: Человек 3 (starmap + explainability + KPI)
+"""KPI квартального плана.
+
+Формулы — дословно из условия задачи:
+    Процент выполнения квартального плана (PI Predictability) =
+        число инициатив, завершённых в течение 12 недель /
+        число инициатив, включённых в первоначальный план × 100%
+    Выполнение плана спринта (Say/Do Ratio) =
+        фактически выполненные SP / первоначально запланированные SP × 100%
+
+Знаменатель всегда берётся из Plan.baseline (Неделя 0), поэтому пересчёт
+current его не меняет (см. contracts/plan_schema.md).
+
+Функции принимают списки PlannedTask как dict или как dataclass-объекты.
+Если одна задача представлена несколькими строками (срезы по спринтам),
+строки схлопываются по task_id.
+"""
+
+from __future__ import annotations
+
+from typing import Any, Iterable, Literal
+
+from backend.explainability.reasons import QUARTER_SPRINTS
+
+PI_NORM = (80.0, 100.0)
+SAY_DO_NORM = (90.0, 105.0)
+
+Mode = Literal["fact", "forecast"]
+
+
+def _get(obj: Any, *names: str, default: Any = None) -> Any:
+    """Первое непустое поле из names — для dict и для dataclass."""
+    for name in names:
+        value = obj.get(name) if isinstance(obj, dict) else getattr(obj, name, None)
+        if value is not None:
+            return value
+    return default
+
+
+def _is_done(task: dict[str, Any]) -> bool:
+    return str(task["status"] or "").casefold() == "done"
+
+
+def _collapse(rows: Iterable[Any]) -> dict[str, dict[str, Any]]:
+    """task_id -> сводная запись задачи (строки-срезы одной задачи схлопываются)."""
+    tasks: dict[str, dict[str, Any]] = {}
+    for row in rows or ():
+        task_id = _get(row, "task_id")
+        if task_id is None:
+            continue
+        sprint = _get(row, "sprint_number", default=0)
+        rec = tasks.setdefault(task_id, {
+            "task_id": task_id,
+            "prodf_id": None,
+            "estimation_sp": 0.0,
+            "decision": None,
+            "status": None,
+            "planned_end": None,
+            "actual_end": None,
+            "forecast_end": None,
+            "_sprint": None,
+        })
+        rec["prodf_id"] = _get(row, "prodf_id", default=rec["prodf_id"])
+        rec["estimation_sp"] = float(_get(row, "estimation_sp", default=rec["estimation_sp"]) or 0)
+        for key, names in (
+            ("planned_end", ("planned_end",)),
+            ("actual_end", ("actual_end", "actual_end_date")),
+            ("forecast_end", ("forecast_end", "forecast_end_date")),
+        ):
+            value = _get(row, *names)
+            if value is not None and (rec[key] is None or value > rec[key]):
+                rec[key] = value
+        # Статус и решение — из самого свежего среза.
+        if rec["_sprint"] is None or sprint >= rec["_sprint"]:
+            rec["_sprint"] = sprint
+            rec["status"] = _get(row, "status", default=rec["status"])
+            rec["decision"] = _get(row, "decision", default=rec["decision"])
+    return tasks
+
+
+def _included(task: dict[str, Any]) -> bool:
+    # Задача без явного решения в baseline считается включённой.
+    return task["decision"] in (None, "included")
+
+
+def _pi_details(baseline: Any, current: Any, mode: Mode) -> dict[str, Any]:
+    if mode not in ("fact", "forecast"):
+        raise ValueError(f"mode должен быть 'fact' или 'forecast', получен {mode!r}")
+    base = _collapse(baseline)
+    cur = _collapse(current)
+
+    scope: dict[str, list[str]] = {}
+    for task in base.values():
+        if _included(task) and task["prodf_id"] is not None:
+            scope.setdefault(task["prodf_id"], []).append(task["task_id"])
+
+    completed, not_completed = [], {}
+    for prodf_id, task_ids in sorted(scope.items()):
+        blocking = [t for t in task_ids if not _task_completes(cur.get(t), mode)]
+        if blocking:
+            not_completed[prodf_id] = blocking
+        else:
+            completed.append(prodf_id)
+
+    value = len(completed) / len(scope) * 100 if scope else 0.0
+    return {
+        "mode": mode,
+        "value": value,
+        "numerator": len(completed),
+        "denominator": len(scope),
+        "completed_prodf": completed,
+        "not_completed_prodf": not_completed,
+        "baseline_scope": {k: sorted(v) for k, v in sorted(scope.items())},
+        "in_norm": PI_NORM[0] <= value <= PI_NORM[1],
+    }
+
+
+def _task_completes(task: dict[str, Any] | None, mode: Mode) -> bool:
+    if task is None:
+        return False
+    if _is_done(task):
+        # Done без даты окончания считаем завершённым: статус — это факт.
+        return task["actual_end"] is None or task["actual_end"] <= QUARTER_SPRINTS
+    if mode == "fact" or task["decision"] in ("postponed", "cancelled"):
+        return False
+    end = task["forecast_end"] if task["forecast_end"] is not None else task["planned_end"]
+    return end is not None and end <= QUARTER_SPRINTS
+
+
+def pi_predictability(baseline: Any, current: Any, mode: Mode = "fact") -> float:
+    """Процент выполнения квартального плана (PI Predictability), %.
+
+    Формула: число инициатив PRODF, завершённых в течение 12 недель /
+             число инициатив, включённых в первоначальный план × 100%.
+
+    Знаменатель — PRODF, у которых в baseline есть задачи с decision="included".
+    Инициатива завершена, если завершены все её задачи из baseline:
+        mode="fact"     — status == Done и actual_end <= 6-го спринта;
+        mode="forecast" — Done, либо прогноз (forecast_end, иначе planned_end)
+                          <= 6-го спринта и задача не перенесена/не отменена.
+
+    Args:
+        baseline: неизменяемый список PlannedTask на Неделю 0 (Plan.baseline).
+        current: актуальный список PlannedTask (Plan.current).
+        mode: "fact" — по фактическим результатам, "forecast" — по прогнозу.
+
+    Returns:
+        Значение в процентах; 0.0, если в baseline нет включённых инициатив.
+    """
+    return _pi_details(baseline, current, mode)["value"]
+
+
+def _say_do_details(baseline: Any, current: Any, sprint_n: int) -> dict[str, Any]:
+    planned = [t for t in _collapse(baseline).values()
+               if _included(t) and t["planned_end"] == sprint_n]
+    done = [t for t in _collapse(current).values()
+            if _is_done(t) and t["actual_end"] == sprint_n]
+    planned_sp = sum(t["estimation_sp"] for t in planned)
+    done_sp = sum(t["estimation_sp"] for t in done)
+    value = done_sp / planned_sp * 100 if planned_sp else 0.0
+    return {
+        "sprint": sprint_n,
+        "value": value,
+        "done_sp": done_sp,
+        "planned_sp": planned_sp,
+        "done_tasks": sorted(t["task_id"] for t in done),
+        "planned_tasks": sorted(t["task_id"] for t in planned),
+        "in_norm": SAY_DO_NORM[0] <= value <= SAY_DO_NORM[1],
+    }
+
+
+def say_do_ratio(baseline: Any, current: Any, sprint_n: int) -> float:
+    """Выполнение плана спринта (Say/Do Ratio), %.
+
+    Формула: фактически выполненные SP в спринте sprint_n (из current) /
+             первоначально запланированные SP на этот спринт (ИЗ BASELINE,
+             а не из current) × 100%.
+
+    Задача засчитывается в спринт своего окончания: план — по planned_end
+    в baseline, факт — по actual_end задач со статусом Done в current.
+
+    Args:
+        baseline: неизменяемый список PlannedTask на Неделю 0 (Plan.baseline).
+        current: актуальный список PlannedTask (Plan.current), источник факта.
+        sprint_n: номер спринта.
+
+    Returns:
+        Значение в процентах; 0.0, если на спринт ничего не планировалось.
+    """
+    return _say_do_details(baseline, current, sprint_n)["value"]
+
+
+def kpi_breakdown(
+    baseline: Any,
+    current: Any,
+    sprints: Iterable[int] = range(1, QUARTER_SPRINTS + 1),
+) -> dict[str, Any]:
+    """Расшифровка KPI: что вошло в числитель и знаменатель каждой метрики.
+
+    Returns:
+        {
+            "pi_predictability": {"fact": {...}, "forecast": {...}},
+            "say_do": [{"sprint", "value", "done_sp", "planned_sp",
+                        "done_tasks", "planned_tasks", "in_norm"}, ...],
+            "norms": {"pi_predictability": (80, 100), "say_do": (90, 105)},
+        }
+    """
+    return {
+        "pi_predictability": {
+            "fact": _pi_details(baseline, current, "fact"),
+            "forecast": _pi_details(baseline, current, "forecast"),
+        },
+        "say_do": [_say_do_details(baseline, current, n) for n in sprints],
+        "norms": {"pi_predictability": PI_NORM, "say_do": SAY_DO_NORM},
+    }

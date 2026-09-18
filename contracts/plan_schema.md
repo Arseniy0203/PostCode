@@ -15,7 +15,7 @@
 `backend/recalculation/baseline.py::save_baseline` на Неделе 0 и в дальнейшем доступен
 только на чтение.
 
-Все KPI (`pi_predictability`, `say_do_ratio`, см. `backend/recalculation/kpi.py`)
+Все KPI (`pi_predictability`, `say_do_ratio`, см. `backend/kpi/metrics.py`)
 считаются как сравнение `current` (или факта) против `baseline`, а не против
 предыдущей версии `current`.
 
