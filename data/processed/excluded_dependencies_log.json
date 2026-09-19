@@ -1,0 +1,26 @@
+[
+    {
+        "dependency": {
+            "blocking_task_id": "SRV-4013",
+            "blocked_task_id": "SRV-4014",
+            "dependency_type": "is required for"
+        },
+        "reason": "blocking_task_id 'SRV-4013' не найден в Tasks"
+    },
+    {
+        "dependency": {
+            "blocking_task_id": "SRV-4015",
+            "blocked_task_id": "SRV-4016",
+            "dependency_type": "depends on"
+        },
+        "reason": "blocking_task_id 'SRV-4015' не найден в Tasks"
+    },
+    {
+        "dependency": {
+            "blocking_task_id": "SRV-4011",
+            "blocked_task_id": "SRV-4019",
+            "dependency_type": "has to be done before"
+        },
+        "reason": "blocked_task_id 'SRV-4019' не найден в Tasks"
+    }
+]

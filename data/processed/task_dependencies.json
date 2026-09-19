@@ -1,0 +1,62 @@
+[
+    {
+        "blocking_task_id": "KP-3898",
+        "blocked_task_id": "ASUKD-5222",
+        "dependency_type": "has to be done before"
+    },
+    {
+        "blocking_task_id": "ANL-3041",
+        "blocked_task_id": "ONK-2475",
+        "dependency_type": "has to be done before"
+    },
+    {
+        "blocking_task_id": "MOB-7011",
+        "blocked_task_id": "MOB-7012",
+        "dependency_type": "has to be done before"
+    },
+    {
+        "blocking_task_id": "ASUKD-5222",
+        "blocked_task_id": "QA-9022",
+        "dependency_type": "is required for"
+    },
+    {
+        "blocking_task_id": "DB-202",
+        "blocked_task_id": "MP-102",
+        "dependency_type": "depends on"
+    },
+    {
+        "blocking_task_id": "MP-101",
+        "blocked_task_id": "AI-302",
+        "dependency_type": "depends on"
+    },
+    {
+        "blocking_task_id": "SRV-4011",
+        "blocked_task_id": "SRV-4012",
+        "dependency_type": "has to be done before"
+    },
+    {
+        "blocking_task_id": "MP-101",
+        "blocked_task_id": "MP-102",
+        "dependency_type": "has to be done before"
+    },
+    {
+        "blocking_task_id": "MP-102",
+        "blocked_task_id": "MP-103",
+        "dependency_type": "has to be done before"
+    },
+    {
+        "blocking_task_id": "DB-201",
+        "blocked_task_id": "DB-202",
+        "dependency_type": "is required for"
+    },
+    {
+        "blocking_task_id": "DB-202",
+        "blocked_task_id": "DB-203",
+        "dependency_type": "has to be done before"
+    },
+    {
+        "blocking_task_id": "AI-301",
+        "blocked_task_id": "AI-302",
+        "dependency_type": "is required for"
+    }
+]

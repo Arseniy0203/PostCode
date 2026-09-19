@@ -1,0 +1,514 @@
+[
+    {
+        "engineer_id": "ENG-401",
+        "team_id": "Team-L",
+        "role": "Разработчик Java",
+        "grade": "Middle",
+        "skills_declared": [
+            "Java",
+            "Spring Boot",
+            "PostgreSQL",
+            "Hibernate",
+            "Apache Kafka"
+        ],
+        "capacity_rate": "1.0"
+    },
+    {
+        "engineer_id": "ENG-402",
+        "team_id": "Team-L",
+        "role": "Разработчик Java",
+        "grade": "Middle",
+        "skills_declared": [
+            "Java",
+            "Spring Cloud",
+            "PostgreSQL",
+            "Docker",
+            "Liquibase"
+        ],
+        "capacity_rate": "1.0"
+    },
+    {
+        "engineer_id": "ENG-403",
+        "team_id": "Team-L",
+        "role": "Разработчик Java",
+        "grade": "Senior",
+        "skills_declared": [
+            "Java",
+            "Spring Framework",
+            "PostgreSQL",
+            "RabbitMQ",
+            "Microservices Архитектура"
+        ],
+        "capacity_rate": "1.0"
+    },
+    {
+        "engineer_id": "ENG-404",
+        "team_id": "Team-L",
+        "role": "Аналитик",
+        "grade": "Senior",
+        "skills_declared": [
+            "SQL",
+            "JSON",
+            "XML",
+            "REST API",
+            "SOAP",
+            "Power BI",
+            "Confluence",
+            "BPMN",
+            "UML"
+        ],
+        "capacity_rate": "1.0"
+    },
+    {
+        "engineer_id": "ENG-405",
+        "team_id": "Team-L",
+        "role": "Дизайнер",
+        "grade": "Senior",
+        "skills_declared": [
+            "Figma",
+            "Adobe Illustrator",
+            "UX/UI",
+            "HTML/CSS",
+            "A/B testing",
+            "CJM"
+        ],
+        "capacity_rate": "0.5"
+    },
+    {
+        "engineer_id": "ENG-405",
+        "team_id": "Team-Alpha",
+        "role": "Дизайнер",
+        "grade": "Senior",
+        "skills_declared": [
+            "Figma",
+            "Adobe Illustrator",
+            "UX/UI",
+            "HTML/CSS",
+            "A/B testing",
+            "CJM"
+        ],
+        "capacity_rate": "0.5"
+    },
+    {
+        "engineer_id": "ENG-406",
+        "team_id": "Team-L",
+        "role": "Разработчик Java Script",
+        "grade": "Junior",
+        "skills_declared": [
+            "JavaScript",
+            "React",
+            "REST API",
+            "GraphQL",
+            "HTML/CSS",
+            "Git"
+        ],
+        "capacity_rate": "0.5"
+    },
+    {
+        "engineer_id": "ENG-406",
+        "team_id": "Team-Beta",
+        "role": "Разработчик Java Script",
+        "grade": "Junior",
+        "skills_declared": [
+            "JavaScript",
+            "React",
+            "REST API",
+            "GraphQL",
+            "HTML/CSS",
+            "Git"
+        ],
+        "capacity_rate": "0.5"
+    },
+    {
+        "engineer_id": "ENG-407",
+        "team_id": "Team-L",
+        "role": "Разработчик Java Script",
+        "grade": "Middle",
+        "skills_declared": [
+            "JavaScript",
+            "TypeScript",
+            "Vue.js",
+            "Angular",
+            "REST API",
+            "GraphQL",
+            "WebSocket"
+        ],
+        "capacity_rate": "1.0"
+    },
+    {
+        "engineer_id": "ENG-408",
+        "team_id": "Team-L",
+        "role": "Тестировщик",
+        "grade": "Middle",
+        "skills_declared": [
+            "Usability",
+            "REST API",
+            "SQL",
+            "DevTools",
+            "Regression/Smoke/Functional testing",
+            "Postman"
+        ],
+        "capacity_rate": "1.0"
+    },
+    {
+        "engineer_id": "ENG-409",
+        "team_id": "Team-L",
+        "role": "Тестировщик",
+        "grade": "Junior",
+        "skills_declared": [
+            "Usability",
+            "REST API",
+            "Ручное тестирование",
+            "Снифферы трафика (Charles)"
+        ],
+        "capacity_rate": "1.0"
+    },
+    {
+        "engineer_id": "ENG-410",
+        "team_id": "Team-L",
+        "role": "Тестировщик (Автотестирование)",
+        "grade": "Senior",
+        "skills_declared": [
+            "Java",
+            "Selenium WebDriver",
+            "Playwright",
+            "Pytest",
+            "JUnit",
+            "SQL",
+            "Postman",
+            "CI/CD"
+        ],
+        "capacity_rate": "1.0"
+    },
+    {
+        "engineer_id": "ENG-411",
+        "team_id": "Team-K",
+        "role": "Тестировщик",
+        "grade": "Middle",
+        "skills_declared": [
+            "Usability",
+            "REST API",
+            "SQL",
+            "DevTools",
+            "Regression/Smoke/Functional testing"
+        ],
+        "capacity_rate": "1.0"
+    },
+    {
+        "engineer_id": "ENG-412",
+        "team_id": "Team-K",
+        "role": "Тестировщик",
+        "grade": "Senior",
+        "skills_declared": [
+            "Usability",
+            "REST API",
+            "Тестирование безопасности",
+            "Нагрузочное тестирование (JMeter)"
+        ],
+        "capacity_rate": "1.0"
+    },
+    {
+        "engineer_id": "ENG-413",
+        "team_id": "Team-K",
+        "role": "Тестировщик (Автотестирование)",
+        "grade": "Middle",
+        "skills_declared": [
+            "Java",
+            "Selenium WebDriver",
+            "Playwright",
+            "Pytest",
+            "JUnit",
+            "GitLab CI",
+            "SQL",
+            "Postman"
+        ],
+        "capacity_rate": "1.0"
+    },
+    {
+        "engineer_id": "ENG-414",
+        "team_id": "Team-K",
+        "role": "Разработчик Java",
+        "grade": "Senior",
+        "skills_declared": [
+            "Java",
+            "Core Spring",
+            "PostgreSQL",
+            "gRPC",
+            "ElasticSearch",
+            "Архитектура БД"
+        ],
+        "capacity_rate": "1.0"
+    },
+    {
+        "engineer_id": "ENG-415",
+        "team_id": "Team-Platform",
+        "role": "Тестировщик",
+        "grade": "Middle",
+        "skills_declared": [
+            "Usability",
+            "REST API",
+            "SQL",
+            "DevTools",
+            "Интеграционное тестирование"
+        ],
+        "capacity_rate": "1.0"
+    },
+    {
+        "engineer_id": "ENG-416",
+        "team_id": "Team-Platform",
+        "role": "Разработчик IOS",
+        "grade": "Middle",
+        "skills_declared": [
+            "Swift",
+            "SwiftUI",
+            "UIKit",
+            "MVC",
+            "MVVM",
+            "ARKit",
+            "CoreLocation",
+            "SQLite",
+            "CocoaPods"
+        ],
+        "capacity_rate": "1.0"
+    },
+    {
+        "engineer_id": "ENG-417",
+        "team_id": "Team-Platform",
+        "role": "Разработчик Android",
+        "grade": "Middle",
+        "skills_declared": [
+            "Kotlin",
+            "Java",
+            "Android SDK",
+            "Gradle",
+            "Jetpack Compose",
+            "Material Design",
+            "Dependency Injection",
+            "Room",
+            "SQLite"
+        ],
+        "capacity_rate": "1.0"
+    },
+    {
+        "engineer_id": "ENG-418",
+        "team_id": "Team-Platform",
+        "role": "Архитектор решений",
+        "grade": "Senior",
+        "skills_declared": [
+            "TOGAF",
+            "Архитектура ПО",
+            "Микросервисы",
+            "Проектирование интеграций",
+            "REST/gRPC"
+        ],
+        "capacity_rate": "1.0"
+    },
+    {
+        "engineer_id": "ENG-419",
+        "team_id": "Team-Platform",
+        "role": "Девопс",
+        "grade": "Senior",
+        "skills_declared": [
+            "Linux",
+            "Docker",
+            "Kubernetes",
+            "CI/CD (GitLab, Jenkins)",
+            "Ansible",
+            "Terraform",
+            "Prometheus"
+        ],
+        "capacity_rate": "0.5"
+    },
+    {
+        "engineer_id": "ENG-419",
+        "team_id": "Team-K",
+        "role": "Девопс",
+        "grade": "Senior",
+        "skills_declared": [
+            "Linux",
+            "Docker",
+            "Kubernetes",
+            "CI/CD (GitLab, Jenkins)",
+            "Ansible",
+            "Terraform",
+            "Prometheus"
+        ],
+        "capacity_rate": "0.5"
+    },
+    {
+        "engineer_id": "ENG-420",
+        "team_id": "Team-Platform",
+        "role": "Разработчик .net",
+        "grade": "Senior",
+        "skills_declared": [
+            "C#",
+            ".NET Core",
+            "ASP.NET",
+            "Entity Framework",
+            "MS SQL",
+            "LINQ",
+            "Microservices"
+        ],
+        "capacity_rate": "1.0"
+    },
+    {
+        "engineer_id": "ENG-421",
+        "team_id": "Team-L",
+        "role": "Аналитик Big Data",
+        "grade": "Senior",
+        "skills_declared": [
+            "Python",
+            "SQL",
+            "Hadoop",
+            "Spark",
+            "Математическая статистика",
+            "BI инструменты"
+        ],
+        "capacity_rate": "1.0"
+    },
+    {
+        "engineer_id": "ENG-422",
+        "team_id": "Team-L",
+        "role": "Разработчик Big Data",
+        "grade": "Senior",
+        "skills_declared": [
+            "Python",
+            "PySpark",
+            "Scala",
+            "Hadoop",
+            "Hive",
+            "Airflow",
+            "Оптимизация ETL"
+        ],
+        "capacity_rate": "1.0"
+    },
+    {
+        "engineer_id": "ENG-423",
+        "team_id": "Team-L",
+        "role": "Руководитель BigData",
+        "grade": "Senior",
+        "skills_declared": [
+            "Управление Data-командами",
+            "Agile/Scrum",
+            "Продуктовые метрики ИИ",
+            "Роадмапы"
+        ],
+        "capacity_rate": "1.0"
+    },
+    {
+        "engineer_id": "ENG-424",
+        "team_id": "Team-Alpha",
+        "role": "Разработчик Java",
+        "grade": "Senior",
+        "skills_declared": [
+            "Java",
+            "Spring Boot",
+            "Микросервисы",
+            "PostgreSQL",
+            "Kafka",
+            "CI/CD"
+        ],
+        "capacity_rate": "1.0"
+    },
+    {
+        "engineer_id": "ENG-425",
+        "team_id": "Team-Alpha",
+        "role": "Аналитик",
+        "grade": "Middle",
+        "skills_declared": [
+            "Системный анализ",
+            "REST API",
+            "SQL",
+            "BPMN",
+            "UML",
+            "Confluence"
+        ],
+        "capacity_rate": "1.0"
+    },
+    {
+        "engineer_id": "ENG-426",
+        "team_id": "Team-Alpha",
+        "role": "Аналитик Big Data",
+        "grade": "Middle",
+        "skills_declared": [
+            "Python",
+            "SQL",
+            "Tableau",
+            "Математический анализ",
+            "Pandas"
+        ],
+        "capacity_rate": "0.5"
+    },
+    {
+        "engineer_id": "ENG-426",
+        "team_id": "Team-Delta",
+        "role": "Аналитик Big Data",
+        "grade": "Middle",
+        "skills_declared": [
+            "Python",
+            "SQL",
+            "Tableau",
+            "Математический анализ",
+            "Pandas"
+        ],
+        "capacity_rate": "0.5"
+    },
+    {
+        "engineer_id": "ENG-427",
+        "team_id": "Team-Beta",
+        "role": "Разработчик Java",
+        "grade": "Middle",
+        "skills_declared": [
+            "Java",
+            "Core",
+            "Spring Core",
+            "Hibernate",
+            "MS SQL",
+            "Git"
+        ],
+        "capacity_rate": "1.0"
+    },
+    {
+        "engineer_id": "ENG-428",
+        "team_id": "Team-Beta",
+        "role": "Аналитик",
+        "grade": "Senior",
+        "skills_declared": [
+            "Бизнес-анализ",
+            "Сбор требований",
+            "ТЗ",
+            "UML",
+            "REST/SOAP интеграции"
+        ],
+        "capacity_rate": "1.0"
+    },
+    {
+        "engineer_id": "ENG-429",
+        "team_id": "Team-Delta",
+        "role": "Разработчик Java",
+        "grade": "Senior",
+        "skills_declared": [
+            "Java",
+            "Spring Boot",
+            "Архитектура ИТ-систем",
+            "gRPC",
+            "Docker",
+            "Kubernetes"
+        ],
+        "capacity_rate": "1.0"
+    },
+    {
+        "engineer_id": "ENG-430",
+        "team_id": "Team-Delta",
+        "role": "Тестировщик",
+        "grade": "Middle",
+        "skills_declared": [
+            "Функциональное тестирование",
+            "Регресс",
+            "Postman",
+            "SQL",
+            "Jira"
+        ],
+        "capacity_rate": "1.0"
+    }
+]
