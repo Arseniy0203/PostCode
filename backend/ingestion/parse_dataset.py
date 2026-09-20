@@ -1,69 +1,191 @@
-# Ответственный: Человек 1 (ingestion + planning)
-"""Парсинг единого Excel-датасета в набор доменных сущностей.
-
-Исходный файл (см. data/raw/) содержит несколько листов, включая лист
-"роль x задача", который необходимо транспонировать в плоский вид
-задача-роль-часы.
-"""
-
 from __future__ import annotations
 
+import json
+import re
+import os
+import pandas as pd
 from typing import Any
 
 
 def parse_excel(filepath: str) -> dict[str, Any]:
-    """Парсит Excel-датасет в словарь из 6 сущностей.
+    """Парсит Excel-датасет в словарь из 6 сущностей."""
+    
+    xls = pd.ExcelFile(filepath)
+    sheet_name = 'Датасет(обновленный)'
+    if sheet_name not in xls.sheet_names:
+        sheet_name = xls.sheet_names[0] 
+        
+    df = pd.read_excel(filepath, sheet_name=sheet_name, header=None)
 
-    Ожидаемый формат возвращаемого словаря:
-        {
-            "tasks": list[dict],
-                # Tasks — по одной записи на задачу, поля соответствуют
-                # contracts/task_schema.md::Task (без estimated_hh —
-                # оно добавляется отдельно из "estimates").
-            "estimates": list[dict],
-                # Estimates — результат транспонирования листа "роль x задача":
-                # [{"task_id": ..., "role": ..., "hours": ...}, ...]
-            "spent_time_roles": list[dict],
-                # Spent_time_roles — факт затраченного времени по ролям:
-                # [{"task_id": ..., "role": ..., "sprint_number": ..., "hours": ...}, ...]
-            "task_dependencies": list[dict],
-                # Task_dependencies — рёбра графа зависимостей:
-                # [{"task_id": ..., "depends_on_task_id": ...}, ...]
-            "engineers_profiles": list[dict],
-                # Engineers_profiles — по одной записи на инженера:
-                # [{"engineer_id": ..., "team_id": ..., "capacity_rate": ...,
-                #   "skills_declared": [...]}, ...]
-            "team_history": list[dict],
-                # Team_history — исторические срезы по командам:
-                # [{"team_id": ..., "sprint_number": ..., "velocity_sp": ...}, ...]
-        }
+    def find_row(keyword: str) -> int:
+        mask = df[0].astype(str).str.contains(keyword, na=False, regex=False)
+        if mask.any():
+            return df[mask].index[0]
+        raise ValueError(f"Не найден маркер таблицы: '{keyword}'")
 
-    Args:
-        filepath: путь к исходному Excel-файлу.
+    idx_tasks = find_row('Tasks (Таблица задач и скоринга)')
+    idx_spent = find_row('Spent_time_roles')
+    idx_estimates = find_row('Estimates. Калькулятор сметы')
+    idx_deps = find_row('Task_dependencies')
+    idx_engineers = find_row('Engineers_profiles')
+    idx_history = find_row('Team_history')
+    idx_dictionary = find_row('Итог разработки')
 
-    Returns:
-        Словарь с 6 ключами, описанными выше.
-    """
-    raise NotImplementedError
+    def slice_to_dict_robust(start_idx: int, end_idx: int) -> list[dict[str, Any]]:
+        raw_slice = df.iloc[start_idx + 1 : end_idx].copy()
+        raw_slice = raw_slice.dropna(how='all', axis=0).dropna(how='all', axis=1)
+        if raw_slice.empty:
+            return []
+        
+        header_idx = raw_slice.notna().sum(axis=1).idxmax()
+        
+        raw_slice.columns = raw_slice.loc[header_idx].astype(str).str.strip().str.replace('\n', ' ')
+        clean_slice = raw_slice.loc[header_idx + 1:].reset_index(drop=True)
+        
+        clean_slice = clean_slice.dropna(how='all', axis=0)
+        clean_slice = clean_slice.where(pd.notnull(clean_slice), None)
+        
+        return clean_slice.to_dict(orient='records')
+
+    tasks = slice_to_dict_robust(idx_tasks, idx_spent)
+    spent_time = slice_to_dict_robust(idx_spent, idx_estimates)
+    history = slice_to_dict_robust(idx_history, idx_dictionary)
+    
+    engineers = slice_to_dict_robust(idx_engineers, idx_history)
+    for eng in engineers:
+        raw_skills = str(eng.get('skills_declared', ''))
+        if raw_skills and raw_skills != 'None':
+            eng['skills_declared'] = [s.strip() for s in re.split(r',\s*(?![^()]*\))', raw_skills) if s.strip()]
+        else:
+            eng['skills_declared'] = []
+
+    # ==========================================
+    # РУЧНОЙ ПАРСИНГ ЗАВИСИМОСТЕЙ (БЕЗ УМНОГО ПОИСКА)
+    # ==========================================
+    raw_deps = df.iloc[idx_deps + 1 : idx_engineers].copy()
+    raw_deps = raw_deps.dropna(how='all', axis=0)
+    dependencies = []
+    if not raw_deps.empty:
+        # Жестко берем первые 3 колонки (A, B, C)
+        deps_clean = raw_deps.iloc[:, 0:3].copy()
+        # Пропускаем первую строку (сломанная шапка с пустым столбцом B)
+        deps_clean = deps_clean.iloc[1:].copy()
+        # Принудительно задаем имена колонкам
+        deps_clean.columns = ['blocking_task_id', 'blocked_task_id', 'dependency_type']
+        
+        # Вычищаем полностью пустые строки
+        deps_clean = deps_clean.dropna(how='any')
+        # Удаляем дубли (например, SRV-4015 -> SRV-4016 с разными типами связи)
+        deps_clean = deps_clean.drop_duplicates(subset=['blocking_task_id', 'blocked_task_id'], keep='first')
+        
+        dependencies = deps_clean.to_dict(orient='records')
+
+    # Транспонирование Estimates
+    est_raw = slice_to_dict_robust(idx_estimates, idx_deps)
+    estimates = []
+    if est_raw:
+        est_df = pd.DataFrame(est_raw)
+        if 'Роль' in est_df.columns:
+            melted = est_df.melt(
+                id_vars=['Роль'],
+                var_name='task_id',
+                value_name='hours'
+            )
+            melted['hours'] = pd.to_numeric(melted['hours'], errors='coerce').fillna(0)
+            melted = melted[melted['hours'] > 0]
+            melted = melted.rename(columns={'Роль': 'role'})
+            
+            melted = melted.where(pd.notnull(melted), None)
+            estimates = melted.to_dict(orient='records')
+
+    return {
+        "tasks": tasks,
+        "estimates": estimates,
+        "spent_time_roles": spent_time,
+        "task_dependencies": dependencies,
+        "engineers_profiles": engineers,
+        "team_history": history
+    }
 
 
 def filter_orphan_dependencies(
     deps: list[dict[str, Any]],
     tasks: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Исключает из Task_dependencies записи, ссылающиеся на несуществующие задачи.
+    valid_task_ids = {str(t.get('task_id')) for t in tasks if t.get('task_id') is not None}
+    
+    clean_deps = []
+    excluded_log = []
 
-    "Осиротевшей" считается запись, у которой task_id или depends_on_task_id
-    отсутствует среди task_id в tasks.
+    for dep in deps:
+        blocking = str(dep.get('blocking_task_id', ''))
+        blocked = str(dep.get('blocked_task_id', ''))
 
-    Args:
-        deps: список зависимостей (см. Task_dependencies в parse_excel).
-        tasks: список задач (см. Tasks в parse_excel).
+        if blocking not in valid_task_ids:
+            excluded_log.append({
+                "dependency": dep, 
+                "reason": f"blocking_task_id '{blocking}' не найден в Tasks"
+            })
+        elif blocked not in valid_task_ids:
+            excluded_log.append({
+                "dependency": dep, 
+                "reason": f"blocked_task_id '{blocked}' не найден в Tasks"
+            })
+        else:
+            clean_deps.append(dep)
 
-    Returns:
-        Кортеж (clean_deps, excluded_log), где:
-            clean_deps — зависимости, у которых обе стороны существуют в tasks;
-            excluded_log — список исключённых записей с причиной исключения,
-                напр. [{"dependency": {...}, "reason": "task_id not found"}, ...].
-    """
-    raise NotImplementedError
+    return clean_deps, excluded_log
+
+
+if __name__ == "__main__":
+    raw_dir = os.path.join("data", "raw")
+    processed_dir = os.path.join("data", "processed")
+    
+    expected_filepath = os.path.join(raw_dir, "Датасет_с_правками_основной.xlsx")
+    input_filepath = expected_filepath
+
+    if not os.path.exists(input_filepath):
+        if os.path.exists(raw_dir):
+            xlsx_files = [f for f in os.listdir(raw_dir) if f.endswith('.xlsx') and not f.startswith('~')]
+            if xlsx_files:
+                input_filepath = os.path.join(raw_dir, xlsx_files[0])
+                print(f"ВНИМАНИЕ: Точный файл не найден. Берем первый доступный Excel: {input_filepath}")
+            else:
+                print(f"КРИТИЧЕСКАЯ ОШИБКА: В папке {raw_dir} нет ни одного файла .xlsx")
+                exit(1)
+        else:
+            print(f"КРИТИЧЕСКАЯ ОШИБКА: Папка {raw_dir} не существует. Запустите скрипт из корня проекта.")
+            exit(1)
+
+    print(f"Начинаем парсинг файла: {input_filepath}")
+    
+    try:
+        parsed_data = parse_excel(input_filepath)
+        print("Парсинг Excel успешно завершен.")
+
+        clean_deps, exclude_log = filter_orphan_dependencies(
+            parsed_data["task_dependencies"], 
+            parsed_data["tasks"]
+        )
+        
+        parsed_data["task_dependencies"] = clean_deps
+        print(f"Фильтрация графа: оставлено {len(clean_deps)} связей, удалено {len(exclude_log)}")
+
+        os.makedirs(processed_dir, exist_ok=True)
+        
+        for key, data_list in parsed_data.items():
+            out_file = os.path.join(processed_dir, f"{key}.json")
+            with open(out_file, 'w', encoding='utf-8') as f:
+                json.dump(data_list, f, ensure_ascii=False, indent=4, default=str)
+            print(f"Сохранено: {out_file}")
+
+        if exclude_log:
+            log_file = os.path.join(processed_dir, "excluded_dependencies_log.json")
+            with open(log_file, 'w', encoding='utf-8') as f:
+                json.dump(exclude_log, f, ensure_ascii=False, indent=4, default=str)
+            print(f"Лог удаленных зависимостей сохранен: {log_file}")
+
+        print(f"\nETL процесс завершен! Все 6 таблиц лежат в {processed_dir}")
+
+    except Exception as e:
+        print(f"Критическая ошибка при выполнении ETL: {e}")
