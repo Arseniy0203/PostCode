@@ -17,6 +17,7 @@
 | deficit_hh         | float \| None                              | Дефицит часов — только для orange |
 | affected_task_ids  | list[str]                                  | Все задействованные задачи (для yellow — вся цепочка) |
 | affected_prodf_ids | list[str]                                  | Все задействованные инициативы |
+| defer_task_ids     | list[str]                                  | Для hiring/capacity: задачи, которые не успеть в квартале даже с наймом/переключением — предлагается перенос |
 | status             | str                                        | `new` — появился в этом спринте, `ongoing` — висит с `since_sprint` |
 | since_sprint       | int \| None                                | С какого спринта алерт держится |
 
@@ -45,6 +46,11 @@
 - **orange / capacity** — задача отложена, хотя все роли в команде есть: (а) её SP больше
   ёмкости команды за спринт — совет разбить на части или частичная цель; (б) часы ролей заняты
   более приоритетными задачами — какой роли и сколько не хватает, нанять или привлечь.
+- **Сроки в рекомендациях hiring/capacity.** Найм ≈ 3 спринта, переключение из другой команды
+  ≈ 1 спринт (`quarter.py`: `HIRE_LEAD_SPRINTS`, `BORROW_LEAD_SPRINTS`). Длительность задачи —
+  по самой большой роли при одном человеке на роль; «начать не позже» = 6 − длительность + 1.
+  Текст: «успевают при найме (человек начнёт работать: спринт 4): …; не успеть в квартале: … —
+  перенести в следующий квартал (01.10.2026) и начать подготовку сейчас».
 - **info / blocked** — задача отложена, потому что не входит в квартал её блокирующая задача;
   цепочка до корневой причины («ждёт MP-102 → DB-202, корень — …»). Инвариант: у каждой
   отложенной задачи есть хотя бы один алерт с объяснением.
@@ -91,12 +97,17 @@ report = run_quarter("key_task_delay", until_sprint=3)   # 0 — только Н
 `ceiling`), `hiring_roadmap` (жадный план найма: `headline` — «1. Нанять «…» в Team-X → +N
 задач»), `summary` (что взято в квартал в baseline и сейчас), `quarter_summary` (итоги по
 задачам и инициативам: `done` / `on_plan` / `carry_over` / `not_in_quarter` / `cancelled`,
-до 6-го спринта — прогноз), `kpi`, `scenarios` (название → описание), `plan`.
+до 6-го спринта — прогноз; `deferred` — перенесена руководителем), `next_quarter`
+(бэклог следующего квартала: `tasks[]` с `kind` — `manual` / `no_role` / `oversized` /
+`blocked` / `not_estimated` / `capacity` / `carry_over`, и `prepare[]` — что сделать к старту:
+`hire` с датой «начать поиск не позже», `split`, `estimate`), `kpi`, `scenarios`, `plan`.
 Сценарии: `on_track`, `key_task_delay`, `engineer_leave`, `vacation`, `early_finish`,
-`hire_role`; `target=` — ручной выбор задачи/инженера/`{"team_id","role"}`.
+`hire_role`, `defer_task`; `target=` — ручной выбор задачи/инженера/`{"team_id","role"}`.
+Перенос на Неделе 0: `run_quarter(..., defer=["KP-0000"])` или `{"KP-0000": "комментарий"}`.
 
-Факт спринта (`apply_sprint_fact`): по задаче — `status` (`Done` / `InProgress` / `Cancelled`),
-`spent_hh` (часы за спринт), `estimated_hh` (переоценка), `note`; на уровне спринта —
+Факт спринта (`apply_sprint_fact`): по задаче — `status` (`Done` / `InProgress` / `Cancelled` /
+`Deferred`), `spent_hh` (часы за спринт), `estimated_hh` (переоценка), `defer` (`true` —
+перенести в следующий квартал, `false` — вернуть), `note`; на уровне спринта —
 `tasks_added`, `engineers_unavailable`, `engineers_returned`, `engineers_hired`.
 Ошибочный факт отменяется `rollback(plan, sprint)`. Факт из Excel:
 `load_fact_excel(path)` → `apply_uploaded_fact(plan, data, fact)`.

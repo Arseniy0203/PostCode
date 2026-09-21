@@ -10,13 +10,21 @@ UI не собирает конвейер руками: всё, что нужн�
 
 from __future__ import annotations
 
+import copy
 import json
 from pathlib import Path
 from typing import Any, Iterable
 
 from backend.recalculation.baseline import save_baseline
+from backend.recalculation.next_quarter import next_quarter_backlog
 from backend.recalculation.plan_fields import normalize_role
-from backend.recalculation.recalc import Planner, apply_sprint_fact, plan_tasks, prepare_tasks
+from backend.recalculation.recalc import (
+    Planner,
+    apply_sprint_fact,
+    mark_deferred,
+    plan_tasks,
+    prepare_tasks,
+)
 from backend.recalculation.scenarios import SCENARIOS, simulate
 from backend.recalculation.summary import quarter_summary
 from backend.recalculation.what_if import hiring_impact, hiring_roadmap, plan_summary
@@ -59,15 +67,22 @@ def load_dataset(data_dir: Path | str = DATA_DIR) -> dict[str, Any]:
     }
 
 
-def build_week0(data: dict[str, Any], planner: Planner | None = None) -> dict[str, Any]:
+def build_week0(data: dict[str, Any], planner: Planner | None = None,
+                defer: dict[str, str] | list[str] | None = None) -> dict[str, Any]:
     """План Недели 0: baseline, алерты на старте и отчёт о качестве данных.
 
     Тем же шагом plan_tasks, что и пересчёт: задачи в работе планируются на
     остаток часов, задачи без сметы откладываются с причиной «Не оценивалась».
+    defer — задачи, которые руководитель решил сразу перенести в следующий
+    квартал (id или {id: комментарий]}): так до фиксации плана видно, что
+    это освобождает для остальных задач.
     """
-    current = plan_tasks(data["tasks"], data["capacity"], data["dependencies"], data["engineers"],
+    tasks = copy.deepcopy(data["tasks"])
+    unknown = mark_deferred(tasks, defer)
+    current = plan_tasks(tasks, data["capacity"], data["dependencies"], data["engineers"],
                          planner=planner, start_sprint=1)
     plan = save_baseline({"current": current})
+    plan["warnings"] = [f"Перенос {tid} пропущен: такой задачи нет." for tid in unknown]
     plan["capacity"] = data["capacity"]
     plan["history"][0].update(engineers_unavailable=[], engineers_hired=[], capacity=data["capacity"])
     alerts, _ = annotate_lifecycle(collect_alerts(plan, data["dependencies"], data["engineers"]), None, 0)
@@ -109,6 +124,7 @@ def build_report(plan: dict[str, Any], data: dict[str, Any], planner: Planner | 
         "hiring_roadmap": (hiring_roadmap(data["tasks"], data["capacity"], data["dependencies"],
                                           data["engineers"], planner=planner) if with_hiring else None),
         "quarter_summary": quarter_summary(plan),
+        "next_quarter": next_quarter_backlog(plan, data["engineers"], data["dependencies"]),
         "kpi": _kpi(plan),
         "scenarios": dict(SCENARIOS),
     }
@@ -123,10 +139,15 @@ def run_quarter(
     data_dir: Path | str = DATA_DIR,
     planner: Planner | None = None,
     with_hiring: bool = True,
+    defer: dict[str, str] | list[str] | None = None,
 ) -> dict[str, Any]:
-    """План Недели 0 и прогон сценария до until_sprint (0 — только Неделя 0)."""
+    """План Недели 0 и прогон сценария до until_sprint (0 — только Неделя 0).
+
+    defer — задачи, которые руководитель переносит в следующий квартал ещё на
+    Неделе 0 (id или {id: комментарий}).
+    """
     data = load_dataset(data_dir)
-    plan = build_week0(data, planner)
+    plan = build_week0(data, planner, defer=defer)
     if until_sprint:
         simulate(plan, scenario, until_sprint, dependencies=data["dependencies"],
                  engineers=data["engineers"], capacity=data["capacity"],

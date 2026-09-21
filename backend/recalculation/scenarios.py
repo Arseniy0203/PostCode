@@ -47,6 +47,10 @@ SCENARIOS: dict[str, str] = {
         "Отпуск: самый загруженный по плану инженер отсутствует 2 спринта после "
         "триггера и возвращается."
     ),
+    "defer_task": (
+        "Перенос в следующий квартал: руководитель переносит ещё не начатую задачу "
+        "с самым низким приоритетом, освободившаяся ёмкость уходит на остальные."
+    ),
 }
 VACATION_SPRINTS = 2
 
@@ -114,6 +118,16 @@ def pick_early_finish(plan: dict[str, Any], sprint: int) -> str | None:
     if not candidates:
         return None
     return task_id(max(candidates, key=lambda t: (end_sprint(t), float(field(t, "rung", default=0) or 0))))
+
+
+def pick_defer(plan: dict[str, Any], sprint: int) -> str | None:
+    """Включённая, ещё не начатая задача с самым низким приоритетом (rung)."""
+    candidates = [t for t in plan["current"]
+                  if not is_done(t) and is_included(t) and (start_sprint(t) or 0) > sprint
+                  and not field(t, "spent_hh")]
+    if not candidates:
+        return None
+    return task_id(min(candidates, key=lambda t: (float(field(t, "rung", default=0) or 0), task_id(t))))
 
 
 def pick_hire(plan: dict[str, Any], engineers: list[dict[str, Any]]) -> tuple[str, str] | None:
@@ -189,6 +203,13 @@ def build_fact(
                 "status": "Done",
                 "spent_hh": {name: hours for name, hours in remaining_hh(task).values()},
             }
+            fact["scenario_target"] = tid
+    elif scenario == "defer_task":
+        tid = target or pick_defer(plan, sprint)
+        if tid:
+            entry = fact["tasks"].setdefault(tid, {"spent_hh": {}})
+            entry.update(defer=True, note="решение руководителя: освободить ёмкость для приоритетных задач")
+            entry.pop("status", None)
             fact["scenario_target"] = tid
     elif scenario == "hire_role":
         pick = (target["team_id"], target["role"]) if target else pick_hire(plan, engineers)
