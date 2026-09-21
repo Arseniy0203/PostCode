@@ -3,19 +3,41 @@
 
 from __future__ import annotations
 
+import copy
 from typing import Any
 
 
-def save_baseline(plan: Any) -> None:
-    """Сохраняет снимок плана на Неделе 0 как baseline.
+class BaselineAlreadySavedError(RuntimeError):
+    """baseline фиксируется один раз за квартал."""
 
-    ЭТА ФУНКЦИЯ НЕ ДОЛЖНА ВЫЗЫВАТЬСЯ ПОВТОРНО В ТЕЧЕНИЕ КВАРТАЛА.
-    baseline фиксируется один раз и далее доступен только на чтение
-    (см. contracts/plan_schema.md, раздел "Правило неизменности baseline").
+
+def save_baseline(plan: dict[str, Any]) -> dict[str, Any]:
+    """Фиксирует текущий план как baseline Недели 0.
+
+    baseline и current становятся независимыми глубокими копиями: планировщик
+    может вернуть в них один и тот же список, и тогда пересчёт current молча
+    портил бы baseline. Повторный вызов запрещён (contracts/plan_schema.md).
 
     Args:
-        plan: Plan с уже построенным current-планом (результат
-            planning/scheduler.py::build_baseline_plan), который нужно
-            зафиксировать как plan.baseline.
+        plan: dict с ключом "current" (результат build_baseline_plan).
+
+    Returns:
+        Тот же plan с заполненными baseline, history и current_sprint = 0.
     """
-    raise NotImplementedError
+    if plan.get("baseline_locked"):
+        raise BaselineAlreadySavedError("baseline уже зафиксирован на Неделе 0")
+
+    current = copy.deepcopy(list(plan.get("current") or plan.get("baseline") or []))
+    plan["baseline"] = tuple(copy.deepcopy(current))
+    plan["current"] = current
+    plan["current_sprint"] = 0
+    plan["history"] = [{
+        "sprint": 0,
+        "fact": None,
+        "current": copy.deepcopy(current),
+        "changes": [],
+        "alerts": [],
+        "warnings": [],
+    }]
+    plan["baseline_locked"] = True
+    return plan
