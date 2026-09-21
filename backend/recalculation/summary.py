@@ -23,7 +23,7 @@ from backend.recalculation.plan_fields import (
     task_id,
 )
 from backend.recalculation.quarter import sprint_label
-from backend.recalculation.recalc import is_cancelled
+from backend.recalculation.recalc import is_cancelled, is_deferred
 from backend.risk.alerts import work_progress
 
 
@@ -36,6 +36,10 @@ def _outcome(task: Any, final: bool) -> dict[str, Any]:
     if is_cancelled(task):
         return {"task_id": tid, "outcome": "cancelled", "label": TargetOption.CANCELLED_BY_CUSTOMER.label,
                 "detail": field(task, "reason_detail", default="") or "отменена"}
+    if is_deferred(task):
+        label = (TargetOption.FUNC_PARTIAL if progress else TargetOption.NOT_IN_QUARTER).label
+        return {"task_id": tid, "outcome": "deferred", "label": label,
+                "detail": field(task, "reason_detail", default="") or "перенесена в следующий квартал"}
     end = end_sprint(task)
     if not final and is_included(task) and end is not None and end <= QUARTER_SPRINTS:
         return {"task_id": tid, "outcome": "on_plan", "label": "в плане квартала",

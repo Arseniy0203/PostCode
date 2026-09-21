@@ -19,6 +19,7 @@
 
 from __future__ import annotations
 
+import math
 from collections import Counter, defaultdict, deque
 from dataclasses import asdict, dataclass, replace
 from datetime import date, datetime
@@ -39,7 +40,14 @@ from backend.recalculation.plan_fields import (
     task_id,
     team_id,
 )
-from backend.recalculation.quarter import QUARTER_START, sprint_label
+from backend.recalculation.quarter import (
+    BORROW_LEAD_SPRINTS,
+    HIRE_LEAD_SPRINTS,
+    QUARTER_START,
+    next_quarter_start,
+    ready_sprint,
+    sprint_label,
+)
 
 SPRINT_HOURS = 80.0
 AlertType = Literal["red", "yellow", "orange", "info"]
@@ -62,17 +70,18 @@ class Alert:
     affected_prodf_ids: tuple[str, ...] = ()
     status: str = "new"
     since_sprint: int | None = None
+    defer_task_ids: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
-        data["affected_task_ids"] = list(self.affected_task_ids)
-        data["affected_prodf_ids"] = list(self.affected_prodf_ids)
+        for key in ("affected_task_ids", "affected_prodf_ids", "defer_task_ids"):
+            data[key] = list(getattr(self, key))
         return data
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Alert":
         known = {k: v for k, v in data.items() if k in cls.__dataclass_fields__}
-        for key in ("affected_task_ids", "affected_prodf_ids"):
+        for key in ("affected_task_ids", "affected_prodf_ids", "defer_task_ids"):
             known[key] = tuple(known.get(key) or ())
         return cls(**known)
 
@@ -134,6 +143,12 @@ def check_critical(plan: Any) -> list[Alert]:
             if field(task, "decision") == "cancelled":
                 description = (
                     f"{tid} была в плане Недели 0, но отменена ({reason}).{progress} "
+                    f"Инициатива {prodf} не будет выполнена в заявленном объёме."
+                )
+            elif field(task, "deferred"):
+                description = (
+                    f"{tid} была в плане Недели 0, но перенесена в следующий квартал "
+                    f"решением руководителя ({field(task, 'defer_note') or 'без комментария'}). "
                     f"Инициатива {prodf} не будет выполнена в заявленном объёме."
                 )
             else:
@@ -363,6 +378,7 @@ def check_resource_deficit(
     period = f"до конца квартала (с {sprint_label(max(target, 1))})"
     blocked = blocked_by_postponed(plan, dependencies or [])
     team_sp = (field(plan, "capacity", default={}) or {}).get("team_sp") or {}
+    by_id = {task_id(t): t for t in _open_tasks(plan)}
 
     demand: dict[tuple[str, str], dict[str, float]] = defaultdict(lambda: defaultdict(float))
     missing: dict[tuple[str, str], dict[str, float]] = defaultdict(lambda: defaultdict(float))
@@ -384,7 +400,8 @@ def check_resource_deficit(
                 continue
             for key, (_, hours) in left.items():
                 demand[(team, key)][tid] += hours / (end - start + 1)
-        elif field(task, "decision") == "postponed" and tid not in blocked:
+        elif (field(task, "decision") == "postponed" and tid not in blocked
+              and not field(task, "deferred") and field(task, "reason_code") != "NOT_ESTIMATED"):
             absent = [k for k in left if supply.get((team, k), 0) == 0]
             for key in absent:
                 missing[(team, key)][tid] += left[key][1]
@@ -434,6 +451,12 @@ def check_resource_deficit(
                                            available, helpers, period))
         top = next((k for k, (kind, _) in zip(ordered, advice) if kind == "hire"), ordered[0])
         listing = ", ".join(f"«{role_name[k]}» ({_fmt(round(hours[k], 1))} ч)" for k in ordered)
+        role_kind = {k: kind for k, (kind, _) in zip(ordered, advice)}
+        timings = [
+            task_timing(by_id[tid], "hire" if any(role_kind[k] == "hire" for k in roles
+                                                   if tid in roles[k]) else "borrow", detected)
+            for tid in sorted(tasks_hh)
+        ]
         alerts.append(_orange(
             team, role_name[top], tasks_hh, prodf_of, detected,
             category="hiring",
@@ -442,7 +465,8 @@ def check_resource_deficit(
                 f"В {team} нет ни одного инженера ролей: {listing}. Из-за этого перенесены "
                 f"задачи: {', '.join(sorted(tasks_hh))}."
             ),
-            recommendation=_advice_text(advice) + " До этого задачи остаются перенесёнными.",
+            recommendation=_advice_text(advice) + " " + timing_text(timings),
+            defer=tuple(t["task_id"] for t in timings if not t["fits"]),
         ))
 
     for task, sp_left, cap in oversized:
@@ -479,10 +503,16 @@ def check_resource_deficit(
                 advice.append(_staffing_advice(name, need, len(staff), available, helpers, period))
                 short += need - available
         reason = field(task, "reason_detail", default="не хватило ёмкости")
-        text = (_advice_text(advice) if advice else
-                "По отдельности часов ролей хватает, но они свободны в разных спринтах или "
-                "не хватило SP команды: разбить задачу на части, сдвинуть менее приоритетную "
-                "или согласовать частичную цель.")
+        defer: tuple[str, ...] = ()
+        if advice:
+            timing = task_timing(task, "hire" if any(k == "hire" for k, _ in advice) else "borrow",
+                                 detected)
+            text = _advice_text(advice) + " " + timing_text([timing])
+            defer = () if timing["fits"] else (tid,)
+        else:
+            text = ("По отдельности часов ролей хватает, но они свободны в разных спринтах или "
+                    "не хватило SP команды: разбить задачу на части, сдвинуть менее приоритетную "
+                    "или согласовать частичную цель.")
         total = sum(h for _, h in left.values())
         alerts.append(_orange(
             team, next(iter(left.values()))[0], {tid: total}, prodf_of, detected,
@@ -493,8 +523,47 @@ def check_resource_deficit(
                 f"приоритетными задачами ({reason})."
             ),
             recommendation=text,
+            defer=defer,
         ))
     return alerts
+
+
+def duration_sprints(task: Any) -> int:
+    """Сколько спринтов займёт задача, если по каждой роли работает один человек."""
+    left = remaining_hh(task)
+    if not left:
+        return 1
+    return max(1, max(math.ceil(hours / SPRINT_HOURS) for _, hours in left.values()))
+
+
+def task_timing(task: Any, kind: str | None, now: int) -> dict[str, Any]:
+    """Успеет ли задача в квартал, если людей нужно нанять (kind="hire") или
+    переключить из другой команды (kind="borrow"), а решение принято в спринте now."""
+    lead = {"hire": HIRE_LEAD_SPRINTS, "borrow": BORROW_LEAD_SPRINTS}.get(kind or "", 0)
+    ready = ready_sprint(now, lead)
+    latest = QUARTER_SPRINTS - duration_sprints(task) + 1
+    return {"task_id": task_id(task), "kind": kind, "ready": ready, "latest": latest,
+            "fits": ready <= latest}
+
+
+def timing_text(timings: list[dict[str, Any]]) -> str:
+    """«Успевают при найме: …; не успеть в квартале: … — перенести в следующий квартал»."""
+    if not timings:
+        return ""
+    parts = []
+    for kind, verb in (("borrow", "при переключении людей"), ("hire", "при найме")):
+        ok = [t for t in timings if t["fits"] and t["kind"] == kind]
+        if ok:
+            parts.append(f"успевают {verb} (человек начнёт работать: {sprint_label(ok[0]['ready'])}): "
+                         + ", ".join(t["task_id"] for t in ok))
+    late = [t for t in timings if not t["fits"]]
+    if late:
+        details = ", ".join(f"{t['task_id']} (начать не позже спринта {max(t['latest'], 0)})"
+                            for t in late)
+        parts.append(f"не успеть в квартале: {details} — перенести в следующий квартал "
+                     f"({next_quarter_start():%d.%m.%Y}) и начать подготовку сейчас")
+    return (f"По срокам (найм ≈ {HIRE_LEAD_SPRINTS} спр., переключение ≈ {BORROW_LEAD_SPRINTS} спр.): "
+            + "; ".join(parts) + ".")
 
 
 def check_blocked(plan: Any, dependencies: list[dict[str, Any]]) -> list[Alert]:
@@ -529,7 +598,7 @@ def check_blocked(plan: Any, dependencies: list[dict[str, Any]]) -> list[Alert]:
 
 
 def _orange(team, role, by_task, prodf_of, detected, *, deficit, description, recommendation,
-            category="resource"):
+            category="resource", defer=()):
     ordered = sorted(by_task, key=lambda t: -by_task[t])
     prodfs = tuple(dict.fromkeys(prodf_of[t] for t in ordered))
     return Alert(
@@ -545,6 +614,7 @@ def _orange(team, role, by_task, prodf_of, detected, *, deficit, description, re
         deficit_hh=round(deficit, 1),
         affected_task_ids=tuple(ordered),
         affected_prodf_ids=prodfs,
+        defer_task_ids=tuple(defer),
     )
 
 

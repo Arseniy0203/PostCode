@@ -4,10 +4,11 @@
 Формат факта за спринт:
     {
         "tasks": {task_id: {
-            "status": "Done" | "InProgress" | "Cancelled",
+            "status": "Done" | "InProgress" | "Cancelled" | "Deferred",
             "spent_hh": {роль: часы, потраченные В ЭТОМ спринте},
             "estimated_hh": {роль: часы},     # переоценка: новая полная смета
-            "note": "причина отмены / переоценки",
+            "defer": True | False,            # перенести в следующий квартал / вернуть
+            "note": "причина отмены / переоценки / переноса",
         }},
         "tasks_added": [{task_id, prodf_id, team_id, estimation_sp, estimated_hh, rung}],
         "engineers_unavailable": [engineer_id, ...],   # со следующего спринта
@@ -66,6 +67,7 @@ PLANNING_FIELDS = (
 _SERVICE_COLUMNS = {normalize_role("task_id"), normalize_role("Исходное время")}
 _TOTAL_ROW = normalize_role("Итого по ролям")
 _CANCELLED = {"cancelled", "canceled", "отменено", "отменена"}
+_DEFERRED = {"deferred", "перенесено", "перенесена"}
 
 
 class SprintOrderError(ValueError):
@@ -75,6 +77,38 @@ class SprintOrderError(ValueError):
 def is_cancelled(task: Any) -> bool:
     return (str(field(task, "status", default="")).casefold() in _CANCELLED
             or field(task, "decision") == "cancelled")
+
+
+def is_deferred(task: Any) -> bool:
+    """Задача перенесена в следующий квартал решением руководителя."""
+    return bool(field(task, "deferred", default=False))
+
+
+def defer_reason(task: Any) -> dict[str, Any]:
+    note = field(task, "defer_note", default="") or "решение руководителя"
+    progress = ""
+    estimated = _estimated_total(task)
+    spent = sum(float(h or 0) for h in (field(task, "spent_hh", default={}) or {}).values())
+    if estimated and spent:
+        progress = f" Выполнено {min(spent / estimated, 1):.0%}, остаток переходит в следующий квартал."
+    target = R.TargetOption.FUNC_PARTIAL if spent else R.TargetOption.NOT_IN_QUARTER
+    return R.make_reason(
+        R.ReasonCode.PLAN_EXCEEDED,
+        f"{task_id(task)} перенесена в следующий квартал: {note}.{progress}",
+        decision="postponed", target=target,
+        facts={"task_id": task_id(task), "note": note, "manual": True},
+    ).to_dict()
+
+
+def mark_deferred(tasks: list[dict[str, Any]], defer: dict[str, str] | list[str] | None,
+                  sprint: int = 0) -> list[str]:
+    """Помечает задачи перенесёнными; возвращает id, которых нет среди задач."""
+    notes = dict.fromkeys(defer, "") if isinstance(defer, list) else dict(defer or {})
+    by_id = {task_id(t): t for t in tasks}
+    for tid, note in notes.items():
+        if tid in by_id:
+            by_id[tid].update(deferred=True, deferred_sprint=sprint, defer_note=note or None)
+    return [tid for tid in notes if tid not in by_id]
 
 
 def _estimated_total(task: Any) -> float:
@@ -146,14 +180,15 @@ def plan_tasks(
 ) -> list[dict[str, Any]]:
     """Один шаг планирования — общий для Недели 0 и пересчёта.
 
-    Done-задачи фиксируются (locked); отменённые в планировщик не идут, поэтому
-    зависящие от них задачи не могут начаться; задачи без сметы откладываются
-    с причиной «Не оценивалась»; задачи в работе планируются на остаток часов.
-    Возвращает задачи в исходном порядке с обновлёнными полями планирования.
+    Done-задачи фиксируются (locked); отменённые и перенесённые руководителем
+    в планировщик не идут, поэтому зависящие от них задачи не могут начаться;
+    задачи без сметы откладываются с причиной «Не оценивалась»; задачи в работе
+    планируются на остаток часов. Возвращает задачи в исходном порядке с
+    обновлёнными полями планирования.
     """
     locked, to_planner, unestimated = [], [], set()
     for task in tasks:
-        if is_cancelled(task):
+        if is_cancelled(task) or (is_deferred(task) and not is_done(task)):
             continue
         if is_done(task):
             locked.append(task_id(task))
@@ -176,6 +211,9 @@ def plan_tasks(
         if tid in unestimated:
             merged.update({k: None for k in PLANNING_FIELDS})
             merged.update(R.not_estimated(tid).to_dict())
+        elif is_deferred(task) and not is_done(task) and not is_cancelled(task):
+            merged.update({k: None for k in PLANNING_FIELDS})
+            merged.update(defer_reason(task))
         elif not is_done(task) and not is_cancelled(task) and tid in planned:
             for key in PLANNING_FIELDS:
                 if key in planned[tid] or key in merged:
@@ -196,6 +234,13 @@ def _apply_task_fact(task: dict[str, Any], fact: dict[str, Any], sprint: int) ->
         task["reestimated_sprint"] = sprint
 
     status = fact.get("status")
+    if status and str(status).casefold() in _DEFERRED:
+        fact = {**fact, "defer": True}
+        status = None
+    if fact.get("defer") is True:
+        task.update(deferred=True, deferred_sprint=sprint, defer_note=fact.get("note"))
+    elif fact.get("defer") is False and task.get("deferred"):
+        task.update(deferred=False, returned_sprint=sprint)
     if status:
         task["status"] = status
     if is_cancelled(task):
@@ -250,6 +295,16 @@ def _changes(
             changes.append({
                 "task_id": tid, "prodf_id": prodf_id(task), "kind": "cancelled",
                 "detail": f"{tid} отменена в {sprint_label(sprint)}. {field(task, 'reason_detail', default='')}",
+            })
+        elif is_deferred(task) and not is_deferred(old_task):
+            changes.append({
+                "task_id": tid, "prodf_id": prodf_id(task), "kind": "deferred",
+                "detail": field(task, "reason_detail", default=f"{tid} перенесена в следующий квартал."),
+            })
+        elif is_deferred(old_task) and not is_deferred(task):
+            changes.append({
+                "task_id": tid, "prodf_id": prodf_id(task), "kind": "returned",
+                "detail": f"{tid} возвращена в квартал: решение — {field(task, 'decision')}.",
             })
         elif is_done(task) and not is_done(old_task):
             changes.append({
