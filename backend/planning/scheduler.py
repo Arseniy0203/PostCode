@@ -4,10 +4,13 @@ import copy
 
 QUARTER_SPRINTS = 6
 
-# TODO: Заменить на точные коды из справочника Мишгана (backend/explainability/reasons.py)
-REASON_MISSING_COMPETENCE = "MISSING_COMPETENCE"
-REASON_DEPENDENCY_BLOCK = "DEPENDENCY_BLOCK"
-REASON_CAPACITY_LIMIT = "CAPACITY_LIMIT"
+# Коды причин — из справочника датасета (backend/explainability/reasons.py).
+# Берём значения из ReasonCode, чтобы строки не разъезжались между модулями.
+from backend.explainability.reasons import ReasonCode
+
+REASON_MISSING_COMPETENCE = ReasonCode.NO_RESOURCES.value          # «Отсутствие ресурсов»
+REASON_DEPENDENCY_BLOCK = ReasonCode.DEPENDENT_TEAM_NOT_READY.value  # «Отсутствует готовность смежных команд»
+REASON_CAPACITY_LIMIT = ReasonCode.PLAN_EXCEEDED.value             # «Превышение плана»
 
 def normalize_role(role: str) -> str:
     """Нормализует название роли: нижний регистр, без пробелов. Игнорирует 'Итого'."""

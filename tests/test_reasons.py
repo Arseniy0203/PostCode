@@ -122,3 +122,21 @@ def test_explain_shift_flags_quarter_risk() -> None:
 def test_explain_shift_requires_cause() -> None:
     with pytest.raises(ValueError):
         explain_shift("DB-203", 3, 4, prodf_id="PRODF-7124")
+
+
+def test_short_prefix_does_not_match_target() -> None:
+    # «1» из ячейки Excel не должна превращаться в цель «1. Аналитика ...».
+    with pytest.raises(ValueError):
+        TargetOption.from_label("1")
+    assert TargetOption.from_label("не будет взято") is TargetOption.NOT_IN_QUARTER
+
+
+def test_no_resources_without_deficit() -> None:
+    reason = no_resources("A1", "Разработчик Java", need_hh=10, available_hh=80, sprint=1)
+    assert "-" not in reason.detail
+    assert reason.facts["deficit_hh"] == 0.0
+
+
+def test_shift_without_change_is_rejected() -> None:
+    with pytest.raises(ValueError):
+        explain_shift("A1", 3, 3, prodf_id="P1", cause_text="ничего не поменялось")

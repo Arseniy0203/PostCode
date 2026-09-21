@@ -12,8 +12,13 @@ from typing import Any
 
 from backend.explainability.reasons import QUARTER_SPRINTS
 
+# Больше этого числа номер спринта быть не может — значит, это дата Excel.
+MAX_SPRINT = 60
+
 __all__ = [
     "QUARTER_SPRINTS",
+    "MAX_SPRINT",
+    "as_sprint",
     "field",
     "task_id",
     "prodf_id",
@@ -22,6 +27,9 @@ __all__ = [
     "is_included",
     "start_sprint",
     "end_sprint",
+    "planned_end_sprint",
+    "forecast_end_sprint",
+    "actual_end_sprint",
     "normalize_role",
     "remaining_hh",
     "current_sprint",
@@ -36,12 +44,31 @@ def field(task: Any, *names: str, default: Any = None) -> Any:
     return default
 
 
+def as_sprint(value: Any) -> int | None:
+    """Приводит значение к номеру спринта или возвращает None.
+
+    В сырых задачах planned_end/actual_end содержат даты Excel (46097.45),
+    datetime или строки, а из pandas приходят numpy-числа. Номером спринта
+    считаем только целое в диапазоне 1..MAX_SPRINT: иначе дата 46097
+    проедет как «спринт 46097» и задача будет выглядеть завершённой
+    далеко за пределами квартала.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        number = int(value)
+        if number != float(value):
+            return None
+    except (TypeError, ValueError):
+        return None
+    return number if 0 < number <= MAX_SPRINT else None
+
+
 def _sprint_value(task: Any, *names: str) -> int | None:
-    # planned_end в сырых задачах — дата-строка из Excel, а не номер спринта.
     for name in names:
-        value = field(task, name)
-        if isinstance(value, int) and not isinstance(value, bool):
-            return value
+        number = as_sprint(field(task, name))
+        if number is not None:
+            return number
     return None
 
 
@@ -74,6 +101,21 @@ def end_sprint(task: Any) -> int | None:
     return _sprint_value(
         task, "forecast_end_sprint", "forecast_end", "planned_end_sprint", "planned_end"
     )
+
+
+def planned_end_sprint(task: Any) -> int | None:
+    """Плановый спринт окончания (из baseline) — знаменатель Say/Do."""
+    return _sprint_value(task, "planned_end_sprint", "planned_end")
+
+
+def forecast_end_sprint(task: Any) -> int | None:
+    """Прогнозный спринт окончания, без подмены плановым."""
+    return _sprint_value(task, "forecast_end_sprint", "forecast_end")
+
+
+def actual_end_sprint(task: Any) -> int | None:
+    """Фактический спринт завершения — числитель Say/Do и факт для KPI."""
+    return _sprint_value(task, "actual_end_sprint", "actual_end")
 
 
 def normalize_role(role: str) -> str:

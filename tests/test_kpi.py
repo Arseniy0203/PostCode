@@ -109,3 +109,47 @@ def test_empty_baseline_gives_zero() -> None:
 
 def test_legacy_import_path() -> None:
     assert legacy_kpi.pi_predictability is pi_predictability
+
+
+def test_reads_sprint_fields_not_excel_dates() -> None:
+    """Сроки берутся из *_sprint; сырые даты Excel игнорируются.
+
+    Планировщик пишет planned_end_sprint / forecast_end_sprint, а одноимённые
+    поля без суффикса в датасете содержат даты Excel (46097.45). Если читать
+    их, Say/Do всегда 0, а Done-задачи выглядят завершёнными после квартала.
+    """
+    base = [{"task_id": "A1", "prodf_id": "P1", "estimation_sp": 5,
+             "planned_end_sprint": 2, "planned_end": 46097.457638888889,
+             "status": "ToDo", "decision": "included"}]
+    cur = [{"task_id": "A1", "prodf_id": "P1", "estimation_sp": 5,
+            "planned_end_sprint": 2, "planned_end": 46097.457638888889,
+            "actual_end_sprint": 2, "actual_end": 46168.475694444445,
+            "status": "Done", "decision": "included"}]
+    assert say_do_ratio(base, cur, 2) == pytest.approx(100.0)
+    assert pi_predictability(base, cur) == pytest.approx(100.0)
+
+
+def test_excel_date_alone_is_not_a_sprint() -> None:
+    # Нет *_sprint, только дата: срок считается неизвестным, а не спринтом 46168.
+    cur = [{"task_id": "A1", "prodf_id": "P1", "estimation_sp": 5,
+            "planned_end": 46097.45, "actual_end": 46168.47, "status": "Done"}]
+    details = kpi_breakdown(cur, cur)["say_do"]
+    assert all(s["planned_sp"] == 0 for s in details)
+
+
+def test_sprint_number_as_string() -> None:
+    base = [{"task_id": "A1", "prodf_id": "P1", "estimation_sp": 4,
+             "planned_end_sprint": "3", "status": "ToDo"}]
+    cur = [{"task_id": "A1", "prodf_id": "P1", "estimation_sp": 4,
+            "actual_end_sprint": "3", "status": "Done"}]
+    assert say_do_ratio(base, cur, 3) == pytest.approx(100.0)
+
+
+def test_prodf_id_from_excel_column_name() -> None:
+    # Парсер отдаёт задачи с исходным заголовком «Номер инициативы».
+    base = [{"task_id": "A1", "Номер инициативы": "PRODF-1", "estimation_sp": 5,
+             "planned_end_sprint": 1, "status": "ToDo", "decision": "included"}]
+    cur = [{"task_id": "A1", "Номер инициативы": "PRODF-1", "estimation_sp": 5,
+            "planned_end_sprint": 1, "actual_end_sprint": 1, "status": "Done",
+            "decision": "included"}]
+    assert pi_predictability(base, cur) == pytest.approx(100.0)

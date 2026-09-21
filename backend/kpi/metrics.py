@@ -14,6 +14,12 @@ current его не меняет (см. contracts/plan_schema.md).
 Функции принимают списки PlannedTask как dict или как dataclass-объекты.
 Если одна задача представлена несколькими строками (срезы по спринтам),
 строки схлопываются по task_id.
+
+Сроки читаются через backend/recalculation/plan_fields.py — единый для проекта
+доступ к полям задачи. Это поля-НОМЕРА СПРИНТОВ (planned_end_sprint,
+actual_end_sprint, forecast_end_sprint), которые пишет planning/scheduler.py.
+Одноимённые поля без суффикса в сыром датасете содержат даты Excel, поэтому
+значения вне диапазона номеров спринтов отбрасываются.
 """
 
 from __future__ import annotations
@@ -21,6 +27,15 @@ from __future__ import annotations
 from typing import Any, Iterable, Literal
 
 from backend.explainability.reasons import QUARTER_SPRINTS
+from backend.recalculation.plan_fields import (
+    actual_end_sprint,
+    field,
+    forecast_end_sprint,
+    is_done,
+    planned_end_sprint,
+    prodf_id,
+    task_id,
+)
 
 PI_NORM = (80.0, 100.0)
 SAY_DO_NORM = (90.0, 105.0)
@@ -28,29 +43,21 @@ SAY_DO_NORM = (90.0, 105.0)
 Mode = Literal["fact", "forecast"]
 
 
-def _get(obj: Any, *names: str, default: Any = None) -> Any:
-    """Первое непустое поле из names — для dict и для dataclass."""
-    for name in names:
-        value = obj.get(name) if isinstance(obj, dict) else getattr(obj, name, None)
-        if value is not None:
-            return value
-    return default
-
-
-def _is_done(task: dict[str, Any]) -> bool:
-    return str(task["status"] or "").casefold() == "done"
-
-
 def _collapse(rows: Iterable[Any]) -> dict[str, dict[str, Any]]:
-    """task_id -> сводная запись задачи (строки-срезы одной задачи схлопываются)."""
+    """task_id -> сводная запись задачи (строки-срезы одной задачи схлопываются).
+
+    Все поля читаются через recalculation/plan_fields, чтобы правило чтения
+    (planned_end_sprint против planned_end, prodf_id против «Номер инициативы»)
+    было в проекте одно.
+    """
     tasks: dict[str, dict[str, Any]] = {}
     for row in rows or ():
-        task_id = _get(row, "task_id")
-        if task_id is None:
+        tid = task_id(row)
+        if not tid:
             continue
-        sprint = _get(row, "sprint_number", default=0)
-        rec = tasks.setdefault(task_id, {
-            "task_id": task_id,
+        sprint = field(row, "sprint_number", default=0)
+        rec = tasks.setdefault(tid, {
+            "task_id": tid,
             "prodf_id": None,
             "estimation_sp": 0.0,
             "decision": None,
@@ -60,21 +67,23 @@ def _collapse(rows: Iterable[Any]) -> dict[str, dict[str, Any]]:
             "forecast_end": None,
             "_sprint": None,
         })
-        rec["prodf_id"] = _get(row, "prodf_id", default=rec["prodf_id"])
-        rec["estimation_sp"] = float(_get(row, "estimation_sp", default=rec["estimation_sp"]) or 0)
-        for key, names in (
-            ("planned_end", ("planned_end",)),
-            ("actual_end", ("actual_end", "actual_end_date")),
-            ("forecast_end", ("forecast_end", "forecast_end_date")),
+        rec["prodf_id"] = prodf_id(row) or rec["prodf_id"]
+        rec["estimation_sp"] = float(
+            field(row, "estimation_sp", default=rec["estimation_sp"]) or 0
+        )
+        for key, read in (
+            ("planned_end", planned_end_sprint),
+            ("actual_end", actual_end_sprint),
+            ("forecast_end", forecast_end_sprint),
         ):
-            value = _get(row, *names)
+            value = read(row)
             if value is not None and (rec[key] is None or value > rec[key]):
                 rec[key] = value
         # Статус и решение — из самого свежего среза.
         if rec["_sprint"] is None or sprint >= rec["_sprint"]:
             rec["_sprint"] = sprint
-            rec["status"] = _get(row, "status", default=rec["status"])
-            rec["decision"] = _get(row, "decision", default=rec["decision"])
+            rec["status"] = field(row, "status", default=rec["status"])
+            rec["decision"] = field(row, "decision", default=rec["decision"])
     return tasks
 
 
@@ -95,12 +104,12 @@ def _pi_details(baseline: Any, current: Any, mode: Mode) -> dict[str, Any]:
             scope.setdefault(task["prodf_id"], []).append(task["task_id"])
 
     completed, not_completed = [], {}
-    for prodf_id, task_ids in sorted(scope.items()):
+    for initiative, task_ids in sorted(scope.items()):
         blocking = [t for t in task_ids if not _task_completes(cur.get(t), mode)]
         if blocking:
-            not_completed[prodf_id] = blocking
+            not_completed[initiative] = blocking
         else:
-            completed.append(prodf_id)
+            completed.append(initiative)
 
     value = len(completed) / len(scope) * 100 if scope else 0.0
     return {
@@ -118,7 +127,7 @@ def _pi_details(baseline: Any, current: Any, mode: Mode) -> dict[str, Any]:
 def _task_completes(task: dict[str, Any] | None, mode: Mode) -> bool:
     if task is None:
         return False
-    if _is_done(task):
+    if is_done(task):
         # Done без даты окончания считаем завершённым: статус — это факт.
         return task["actual_end"] is None or task["actual_end"] <= QUARTER_SPRINTS
     if mode == "fact" or task["decision"] in ("postponed", "cancelled"):
@@ -154,7 +163,7 @@ def _say_do_details(baseline: Any, current: Any, sprint_n: int) -> dict[str, Any
     planned = [t for t in _collapse(baseline).values()
                if _included(t) and t["planned_end"] == sprint_n]
     done = [t for t in _collapse(current).values()
-            if _is_done(t) and t["actual_end"] == sprint_n]
+            if is_done(t) and t["actual_end"] == sprint_n]
     planned_sp = sum(t["estimation_sp"] for t in planned)
     done_sp = sum(t["estimation_sp"] for t in done)
     value = done_sp / planned_sp * 100 if planned_sp else 0.0

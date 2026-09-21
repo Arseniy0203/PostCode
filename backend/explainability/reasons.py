@@ -62,9 +62,12 @@ class _LabeledEnum(str, Enum):
         for item in cls:
             if key in (_norm_label(item.label), _norm_label(item.value)):
                 return item
-        prefixed = [item for item in cls if _norm_label(item.label).startswith(key)]
-        if len(prefixed) == 1:
-            return prefixed[0]
+        # Префикс принимаем только достаточно длинный: иначе случайная "1"
+        # из ячейки Excel совпадёт с «1. Аналитика и архитектура ...».
+        if len(key) >= 5:
+            prefixed = [item for item in cls if _norm_label(item.label).startswith(key)]
+            if len(prefixed) == 1:
+                return prefixed[0]
         raise ValueError(f"{cls.__name__}: неизвестное значение {text!r}")
 
 
@@ -250,12 +253,20 @@ def no_resources(
 ) -> Reason:
     """Не хватает часов специалистов роли."""
     where = f" в спринте {sprint}" if sprint is not None else " до конца квартала"
-    detail = (
-        f"Не хватает {_fmt(need_hh - available_hh)} ч роли «{role}»{where}: "
-        f"нужно {_fmt(need_hh)} ч, доступно {_fmt(available_hh)} ч."
-    )
+    deficit = need_hh - available_hh
+    if deficit > 0:
+        detail = (
+            f"Не хватает {_fmt(deficit)} ч роли «{role}»{where}: "
+            f"нужно {_fmt(need_hh)} ч, доступно {_fmt(available_hh)} ч."
+        )
+    else:
+        detail = (
+            f"Часы роли «{role}»{where} заняты другими задачами: "
+            f"нужно {_fmt(need_hh)} ч, свободно {_fmt(available_hh)} ч."
+        )
     facts = {"task_id": task_id, "role": role, "need_hh": need_hh,
-             "available_hh": available_hh, "sprint": sprint}
+             "available_hh": available_hh, "deficit_hh": max(deficit, 0.0),
+             "sprint": sprint}
     return make_reason(ReasonCode.NO_RESOURCES, detail, decision=decision,
                        target=target, facts=facts)
 
@@ -507,6 +518,10 @@ def explain_shift(
     """
     if not cause_task_id and not (cause_text and cause_text.strip()):
         raise ValueError("Нужно указать cause_task_id или cause_text")
+    if new_sprint == old_sprint:
+        raise ValueError(
+            f"{task_id}: сдвига нет, спринт окончания не изменился ({old_sprint})"
+        )
     delta = new_sprint - old_sprint
     sign = f"+{delta}" if delta > 0 else str(delta)
     parts = [f"Срок {task_id} сдвинулся со спринта {old_sprint} на {new_sprint} ({sign})"]
