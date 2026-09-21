@@ -37,6 +37,10 @@ def fake_planner(tasks, capacity, dependencies, engineers, estimates=None,
             pending.remove(task)
             progressed = True
             item = copy.deepcopy(task)
+            if any(b not in ends for b in deps):
+                item.update(decision="postponed", reason_detail="блокирующая задача не в плане")
+                result[task["task_id"]] = item
+                continue
             hours = sum(task["estimated_hh"].values())
             start = max([start_sprint] + [ends[b] + 1 for b in deps if b in ends])
             end = start + max(1, math.ceil(hours / HOURS_PER_SPRINT)) - 1

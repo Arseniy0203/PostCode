@@ -111,6 +111,10 @@ def _pi_details(baseline: Any, current: Any, mode: Mode,
     committed: dict[str, list[str]] = {}
     all_tasks: dict[str, list[str]] = {}
     for task in base.values():
+        # Done на Неделе 0 — факт прошлых периодов, в обещание квартала не входит
+        # (ответ экспертов; планировщик помечает такие задачи included в спринт 0).
+        if is_done(task):
+            continue
         initiative = task["prodf_id"]
         if initiative is None:
             continue

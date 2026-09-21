@@ -34,16 +34,49 @@ def check_data_quality(
     tasks: list[dict[str, Any]],
     estimates: list[dict[str, Any]],
     dependencies: list[dict[str, Any]],
+    engineers: list[dict[str, Any]] | None = None,
+    team_history: list[dict[str, Any]] | None = None,
 ) -> list[Alert]:
-    """Задачи-призраки, дубли связей, расхождение estimated_hh с калькулятором.
+    """Задачи-призраки, дубли связей, расхождение estimated_hh с калькулятором,
+    незавершённые задачи без сметы, команды без истории velocity и без инженеров.
 
     Args:
         tasks: задачи из Tasks.
         estimates: калькулятор сметы в длинном формате {task_id, role, hours}.
         dependencies: ВСЕ связи, включая отброшенные при парсинге.
+        engineers: профили инженеров (для проверки команд без людей).
+        team_history: история спринтов (для проверки команд без velocity).
     """
     by_id = {task_id(t): t for t in tasks}
     alerts: list[Alert] = []
+    open_tasks = [t for t in tasks if str(t.get("status", "")).casefold() != "done"]
+    teams = sorted({str(t.get("team_id")) for t in open_tasks if t.get("team_id")})
+
+    if team_history is not None:
+        with_history = {str(h.get("team_id")) for h in team_history}
+        for team in teams:
+            if team not in with_history:
+                ids = sorted(task_id(t) for t in open_tasks if t.get("team_id") == team)
+                alerts.append(_info(
+                    ids[0], prodf_id(by_id[ids[0]]),
+                    f"У {team} нет истории спринтов в Team_history: ёмкость 0 SP, "
+                    f"все её задачи ({', '.join(ids)}) будут отложены.",
+                    f"Добавить velocity {team} за прошлые спринты.",
+                    affected=ids,
+                ))
+    if engineers is not None:
+        staffed = {str(e.get("team_id")) for e in engineers}
+        for team in teams:
+            if team not in staffed:
+                ids = sorted(task_id(t) for t in open_tasks if t.get("team_id") == team)
+                alerts.append(_info(
+                    ids[0], prodf_id(by_id[ids[0]]),
+                    f"У {team} нет ни одного инженера в Engineers_profiles, а задач у неё "
+                    f"{len(ids)}: {', '.join(ids)}.",
+                    f"Проверить штатное расписание {team}; до этого задачи выполняются "
+                    f"только инженерами других команд или откладываются.",
+                    affected=ids,
+                ))
 
     def prodf_of(*ids: str) -> str:
         return next((prodf_id(by_id[i]) for i in ids if i in by_id), "")
@@ -85,6 +118,15 @@ def check_data_quality(
             f"В калькуляторе сметы есть задача {tid} ({calc[tid]:g} ч), которой нет в Tasks.",
             "Проверить, не потеряна ли задача при выгрузке; в планировании не участвует.",
         ))
+
+    for task in open_tasks:
+        tid = task_id(task)
+        if calc.get(tid, 0) <= 0:
+            alerts.append(_info(
+                tid, prodf_id(task),
+                f"У незавершённой задачи {tid} нет оценки в калькуляторе сметы.",
+                "Оценить задачу по ролям; до этого она откладывается с причиной «Не оценивалась».",
+            ))
 
     for tid, task in by_id.items():
         declared = task.get("estimated_hh")
