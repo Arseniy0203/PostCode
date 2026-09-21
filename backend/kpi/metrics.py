@@ -41,6 +41,10 @@ PI_NORM = (80.0, 100.0)
 SAY_DO_NORM = (90.0, 105.0)
 
 Mode = Literal["fact", "forecast"]
+# committed  — считаем только задачи, взятые в квартал (обещание команды);
+# initiative — считаем все задачи инициативы из baseline, включая перенесённые
+#              (обещание бизнесу: цель достигнута целиком или нет).
+Scope = Literal["committed", "initiative"]
 
 
 def _collapse(rows: Iterable[Any]) -> dict[str, dict[str, Any]]:
@@ -92,34 +96,50 @@ def _included(task: dict[str, Any]) -> bool:
     return task["decision"] in (None, "included")
 
 
-def _pi_details(baseline: Any, current: Any, mode: Mode) -> dict[str, Any]:
+def _pi_details(baseline: Any, current: Any, mode: Mode,
+                scope: Scope = "committed") -> dict[str, Any]:
     if mode not in ("fact", "forecast"):
         raise ValueError(f"mode должен быть 'fact' или 'forecast', получен {mode!r}")
+    if scope not in ("committed", "initiative"):
+        raise ValueError(
+            f"scope должен быть 'committed' или 'initiative', получен {scope!r}"
+        )
     base = _collapse(baseline)
     cur = _collapse(current)
 
-    scope: dict[str, list[str]] = {}
+    # Знаменатель одинаков для обоих срезов: инициативы, которые взяли в квартал.
+    committed: dict[str, list[str]] = {}
+    all_tasks: dict[str, list[str]] = {}
     for task in base.values():
-        if _included(task) and task["prodf_id"] is not None:
-            scope.setdefault(task["prodf_id"], []).append(task["task_id"])
+        initiative = task["prodf_id"]
+        if initiative is None:
+            continue
+        all_tasks.setdefault(initiative, []).append(task["task_id"])
+        if _included(task):
+            committed.setdefault(initiative, []).append(task["task_id"])
+
+    checked = committed if scope == "committed" else {
+        initiative: all_tasks[initiative] for initiative in committed
+    }
 
     completed, not_completed = [], {}
-    for initiative, task_ids in sorted(scope.items()):
+    for initiative, task_ids in sorted(checked.items()):
         blocking = [t for t in task_ids if not _task_completes(cur.get(t), mode)]
         if blocking:
-            not_completed[initiative] = blocking
+            not_completed[initiative] = sorted(blocking)
         else:
             completed.append(initiative)
 
-    value = len(completed) / len(scope) * 100 if scope else 0.0
+    value = len(completed) / len(committed) * 100 if committed else 0.0
     return {
         "mode": mode,
+        "scope": scope,
         "value": value,
         "numerator": len(completed),
-        "denominator": len(scope),
+        "denominator": len(committed),
         "completed_prodf": completed,
         "not_completed_prodf": not_completed,
-        "baseline_scope": {k: sorted(v) for k, v in sorted(scope.items())},
+        "baseline_scope": {k: sorted(v) for k, v in sorted(checked.items())},
         "in_norm": PI_NORM[0] <= value <= PI_NORM[1],
     }
 
@@ -136,14 +156,29 @@ def _task_completes(task: dict[str, Any] | None, mode: Mode) -> bool:
     return end is not None and end <= QUARTER_SPRINTS
 
 
-def pi_predictability(baseline: Any, current: Any, mode: Mode = "fact") -> float:
+def pi_predictability(
+    baseline: Any,
+    current: Any,
+    mode: Mode = "fact",
+    scope: Scope = "committed",
+) -> float:
     """Процент выполнения квартального плана (PI Predictability), %.
 
     Формула: число инициатив PRODF, завершённых в течение 12 недель /
              число инициатив, включённых в первоначальный план × 100%.
 
-    Знаменатель — PRODF, у которых в baseline есть задачи с decision="included".
-    Инициатива завершена, если завершены все её задачи из baseline:
+    Знаменатель в обоих срезах один: PRODF, у которых в baseline есть задачи
+    с decision="included", то есть инициативы, взятые в квартал.
+
+    Различается числитель:
+        scope="committed"  — инициатива завершена, если закрыты её задачи,
+            взятые в квартал. Отвечает на вопрос «выполнили ли то, что обещали
+            на Неделе 0»;
+        scope="initiative" — инициатива завершена, только если закрыты ВСЕ её
+            задачи из baseline, включая перенесённые. Отвечает на вопрос
+            заказчика «достигнута ли цель целиком».
+
+    Завершённость задачи:
         mode="fact"     — status == Done и actual_end <= 6-го спринта;
         mode="forecast" — Done, либо прогноз (forecast_end, иначе planned_end)
                           <= 6-го спринта и задача не перенесена/не отменена.
@@ -152,11 +187,13 @@ def pi_predictability(baseline: Any, current: Any, mode: Mode = "fact") -> float
         baseline: неизменяемый список PlannedTask на Неделю 0 (Plan.baseline).
         current: актуальный список PlannedTask (Plan.current).
         mode: "fact" — по фактическим результатам, "forecast" — по прогнозу.
+        scope: "committed" — по взятым в квартал задачам, "initiative" — по всей
+            инициативе.
 
     Returns:
         Значение в процентах; 0.0, если в baseline нет включённых инициатив.
     """
-    return _pi_details(baseline, current, mode)["value"]
+    return _pi_details(baseline, current, mode, scope)["value"]
 
 
 def _say_do_details(baseline: Any, current: Any, sprint_n: int) -> dict[str, Any]:
@@ -208,7 +245,9 @@ def kpi_breakdown(
 
     Returns:
         {
-            "pi_predictability": {"fact": {...}, "forecast": {...}},
+            "pi_predictability": {"fact": {...}, "forecast": {...},
+                                  "fact_initiative": {...},
+                                  "forecast_initiative": {...}},
             "say_do": [{"sprint", "value", "done_sp", "planned_sp",
                         "done_tasks", "planned_tasks", "in_norm"}, ...],
             "norms": {"pi_predictability": (80, 100), "say_do": (90, 105)},
@@ -218,6 +257,9 @@ def kpi_breakdown(
         "pi_predictability": {
             "fact": _pi_details(baseline, current, "fact"),
             "forecast": _pi_details(baseline, current, "forecast"),
+            "fact_initiative": _pi_details(baseline, current, "fact", "initiative"),
+            "forecast_initiative": _pi_details(
+                baseline, current, "forecast", "initiative"),
         },
         "say_do": [_say_do_details(baseline, current, n) for n in sprints],
         "norms": {"pi_predictability": PI_NORM, "say_do": SAY_DO_NORM},

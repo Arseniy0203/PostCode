@@ -153,3 +153,43 @@ def test_prodf_id_from_excel_column_name() -> None:
             "planned_end_sprint": 1, "actual_end_sprint": 1, "status": "Done",
             "decision": "included"}]
     assert pi_predictability(base, cur) == pytest.approx(100.0)
+
+
+@pytest.fixture
+def partial_initiative():
+    """Инициатива, у которой часть задач не влезла в квартал."""
+    baseline = [
+        _task("A1", "PRODF-1", 5, 1, decision="included"),
+        _task("A2", "PRODF-1", 8, None, decision="postponed"),
+    ]
+    current = [
+        _task("A1", "PRODF-1", 5, 1, status="Done", actual_end=1, decision="included"),
+        _task("A2", "PRODF-1", 8, None, decision="postponed"),
+    ]
+    return baseline, current
+
+
+def test_pi_scopes_differ_for_partial_initiative(partial_initiative) -> None:
+    baseline, current = partial_initiative
+    # Взятое в квартал выполнено полностью...
+    assert pi_predictability(baseline, current, scope="committed") == pytest.approx(100.0)
+    # ...но цель заказчика не достигнута: A2 перенесена.
+    assert pi_predictability(baseline, current, scope="initiative") == pytest.approx(0.0)
+
+
+def test_pi_denominator_same_in_both_scopes(partial_initiative) -> None:
+    baseline, current = partial_initiative
+    details = kpi_breakdown(baseline, current)["pi_predictability"]
+    assert details["fact"]["denominator"] == details["fact_initiative"]["denominator"] == 1
+    assert details["fact_initiative"]["not_completed_prodf"]["PRODF-1"] == ["A2"]
+
+
+def test_pi_scopes_equal_when_everything_committed(baseline, current) -> None:
+    for mode in ("fact", "forecast"):
+        assert pi_predictability(baseline, current, mode, "committed") == \
+            pi_predictability(baseline, current, mode, "initiative")
+
+
+def test_unknown_scope_rejected(baseline, current) -> None:
+    with pytest.raises(ValueError):
+        pi_predictability(baseline, current, scope="всё подряд")
