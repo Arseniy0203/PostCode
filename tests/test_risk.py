@@ -207,6 +207,6 @@ def test_collect_alerts_sorted_by_severity_and_serializable():
     _task(plan, "DB-202")["estimated_hh"]["Разработчик .net"] = 300
     alerts = collect_alerts(plan, DEPS, ENGINEERS)
     assert [a.type for a in alerts] == sorted(
-        (a.type for a in alerts), key=["red", "yellow", "orange"].index)
+        (a.type for a in alerts), key=["red", "yellow", "orange", "info"].index)
     assert {"red", "yellow", "orange"} <= {a.type for a in alerts}
     assert all(a.to_dict()["prodf_id_at_risk"] for a in alerts)
