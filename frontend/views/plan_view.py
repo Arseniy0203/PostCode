@@ -34,7 +34,7 @@ def get_status_color(status: str, decision: str) -> str:
     return status_map.get(status, "#9e9e9e")
 
 
-def render_plan_view(plan: dict[str, Any], view_mode: str) -> None:
+def render_plan_view(plan: dict[str, Any], view_mode_label: str) -> None:
     """
     Отрисовывает план по спринтам в виде канбан-сетки.
 
@@ -42,11 +42,12 @@ def render_plan_view(plan: dict[str, Any], view_mode: str) -> None:
 
     Args:
         plan: Структура Plan (словарь с baseline и current).
-        view_mode: Выбранный режим (Baseline или Current).
+        view_mode_label: Строка с названием текущего хронологического среза.
     """
-    st.title("📅 Квартальный PI-план (6 спринтов)")
+    st.title(f"📅 Квартальный PI-план ({view_mode_label})")
 
-    tasks = plan.get("baseline", []) if "Baseline" in view_mode else plan.get("current", [])
+    # Читаем baseline только если выбран снимок Недели 0
+    tasks = plan.get("baseline", []) if "Baseline" in view_mode_label else plan.get("current", [])
 
     if not tasks:
         st.warning("Нет данных для отображения.")

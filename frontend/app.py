@@ -27,6 +27,7 @@ from backend.risk.alerts import collect_alerts
 from backend.starmap.bus_factor import starmap_summary
 from backend.recalculation.recalc import apply_sprint_fact
 from backend.kpi.metrics import kpi_breakdown
+from backend.recalculation.baseline import save_baseline
 
 from views.plan_view import render_plan_view
 from views.risk_view import render_risk_view
@@ -183,6 +184,8 @@ def process_baseline(file_bytes: bytes) -> dict[str, Any]:
             estimates=parsed["estimates"]
         )
 
+        plan = save_baseline(plan)
+
         alerts = [a.to_dict() for a in collect_alerts(plan, clean_deps, parsed["engineers_profiles"])]
         starmap = starmap_summary(plan, parsed["engineers_profiles"], parsed["estimates"])
 
@@ -199,34 +202,55 @@ def process_baseline(file_bytes: bytes) -> dict[str, Any]:
 
 
 @st.cache_data(show_spinner="Применение факта и пересчет текущего плана...")
-def process_fact(base_data: dict[str, Any], fact_file_bytes: bytes) -> dict[str, Any]:
-    """Обрабатывает загруженный факт, обновляет Plan.current и пересчитывает риски."""
+def process_fact(prev_plan: dict[str, Any], master_deps: list[dict[str, Any]], master_engineers: list[dict[str, Any]],
+                 master_estimates: list[dict[str, Any]], master_history: list[dict[str, Any]],
+                 fact_file_bytes: bytes) -> dict[str, Any]:
+    """Обрабатывает факт, обновляет Plan.current на основе предыдущего плана и пересчитывает риски."""
     with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
         tmp.write(fact_file_bytes)
         tmp_path = tmp.name
 
     try:
         fact_parsed = parse_excel(tmp_path)
-        updated_plan = copy.deepcopy(base_data["plan"])
 
-        updated_current = apply_sprint_fact(
+        fact_dict = {"tasks": {}}
+        for task in fact_parsed.get("tasks", []):
+            tid = str(task.get("task_id") or "").strip()
+            if tid:
+                fact_dict["tasks"][tid] = {"status": str(task.get("status", "")).strip(), "spent_hh": {}}
+
+        for spent in fact_parsed.get("spent_time_roles", []):
+            tid = str(spent.get("task_id") or "").strip()
+            if tid and tid in fact_dict["tasks"]:
+                for key, value in spent.items():
+                    if key.lower() not in ["task_id", "исходное время", ""]:
+                        try:
+                            hours = float(value)
+                            if hours > 0:
+                                fact_dict["tasks"][tid]["spent_hh"][key] = hours
+                        except (ValueError, TypeError):
+                            pass
+
+        # Реконструируем capacity из history
+        capacity = {"team_sp": {}, "engineer_hh": {}}
+        for th in master_history:
+            t_id = th.get("team_id")
+            sp = th.get("velocity_sp")
+            if t_id and sp:
+                capacity["team_sp"][t_id] = float(sp) * 0.8
+
+        updated_plan = copy.deepcopy(prev_plan)
+
+        updated_plan = apply_sprint_fact(
             plan=updated_plan,
-            fact_tasks=fact_parsed["tasks"],
-            fact_spent=fact_parsed["spent_time_roles"]
+            fact=fact_dict,
+            dependencies=master_deps,
+            engineers=master_engineers,
+            capacity=capacity
         )
 
-        if isinstance(updated_current, list):
-            updated_plan["current"] = updated_current
-        elif isinstance(updated_current, dict) and "current" in updated_current:
-            updated_plan = updated_current
-
-        # Гарантируем иммутабельность Baseline
-        updated_plan["baseline"] = base_data["plan"]["baseline"]
-
-        alerts = [a.to_dict() for a in
-                  collect_alerts(updated_plan, base_data["clean_deps"], base_data["parsed"]["engineers_profiles"])]
-        starmap = starmap_summary(updated_plan, base_data["parsed"]["engineers_profiles"],
-                                  base_data["parsed"]["estimates"])
+        alerts = [a.to_dict() for a in collect_alerts(updated_plan, master_deps, master_engineers)]
+        starmap = starmap_summary(updated_plan, master_engineers, master_estimates)
 
         return {
             "plan": updated_plan,
@@ -236,6 +260,13 @@ def process_fact(base_data: dict[str, Any], fact_file_bytes: bytes) -> dict[str,
     finally:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
+
+
+def init_session_state() -> None:
+    """Инициализирует State Machine для 6 спринтов."""
+    if "calculated_plans" not in st.session_state:
+        st.session_state.calculated_plans = {}  # Ключи: "baseline", 1, 2, ..., 6
+        st.session_state.master_dataset = None  # Сырые данные Недели 0
 
 
 def render_kpi_widgets(baseline_tasks: list[dict[str, Any]], current_tasks: list[dict[str, Any]]) -> None:
@@ -279,71 +310,132 @@ def render_kpi_widgets(baseline_tasks: list[dict[str, Any]], current_tasks: list
 
 
 def main() -> None:
-    """Инициализирует Streamlit-страницу и sidebar-навигацию."""
+    """Инициализирует Streamlit-страницу, State Machine и сайдбар-навигацию."""
     st.set_page_config(page_title=APP_TITLE, layout="wide")
     inject_custom_css()
+    init_session_state()
 
     if os.path.exists(LOGO_PATH):
         st.sidebar.image(LOGO_PATH, width="stretch")
 
-    st.sidebar.title("🧭 Навигация")
+    st.sidebar.title("🧭 Навигация и Данные")
 
-    view_mode = st.sidebar.radio(
-        "Режим просмотра",
-        options=["Текущий план (Current)", "Снимок (Baseline Неделя 0)"],
-        index=0
-    )
+    # СОСТОЯНИЕ 0: Мастер-датасет не загружен
+    if "baseline" not in st.session_state.calculated_plans:
+        st.title("📥 Инициализация квартала (Неделя 0)")
+        st.info("Приложение находится в Состоянии 0. Для начала работы загрузите базовый план.")
 
-    page = st.sidebar.selectbox(
-        "Раздел",
-        options=["План (PI-цикл)", "Риски и Алерты", "Звёздная карта"]
-    )
-
-    st.sidebar.markdown("---")
-    st.sidebar.info("Команда: Кронверкские псы\n\nХакатон: ПочтаТех")
-    st.sidebar.markdown("---")
-
-    # Зона 1: Базовая загрузка Master-файла
-    if "dataset_state" not in st.session_state:
-        st.title("📥 Загрузка данных планирования")
         uploaded_file = st.file_uploader(
             "Загрузите Master-датасет (.xlsx)",
             type=["xlsx"],
-            help="Файл инициализации плана. Используется для формирования Baseline."
+            help="Файл инициализации плана. Служит основой для расчета Baseline и KPI."
         )
 
-        if not uploaded_file:
-            st.warning("Пожалуйста, загрузите исходный Excel-файл датасета для начала работы.")
-            return  # Блокируем рендер остального UI, пока нет файла
+        if uploaded_file:
+            try:
+                base_state = process_baseline(uploaded_file.getvalue())
+                st.session_state.master_dataset = base_state
+                st.session_state.calculated_plans["baseline"] = {
+                    "plan": base_state["plan"],
+                    "alerts": base_state["alerts"],
+                    "starmap": base_state["starmap"]
+                }
+                st.rerun()
+            except Exception as e:
+                st.error("❌ Критическая ошибка: Неверный формат Master-датасета.")
+                with st.expander("Технические детали"):
+                    st.code(str(e))
+        return  # Полная блокировка остального UI до загрузки Мастера
 
-        st.session_state.dataset_state = process_baseline(uploaded_file.getvalue())
+    # СОСТОЯНИЕ 1-6: Пайплайн загрузки спринтов в Сайдбаре
+    st.sidebar.markdown("### 🗂 Загрузка данных")
 
-    base_state = st.session_state.dataset_state
+    with st.sidebar.expander("✅ Мастер-датасет (Неделя 0)", expanded=False):
+        if st.button("Сбросить весь план и начать заново", use_container_width=True):
+            st.session_state.calculated_plans = {}
+            st.session_state.master_dataset = None
+            st.rerun()
 
-    # Зона 2: Загрузка Факта (Сайдбар)
-    fact_file = st.sidebar.file_uploader(
-        "Загрузить результаты спринта (Факт)",
-        type=["xlsx"],
-        help="Загрузите файл с фактическими данными (списания часов) для пересчета плана"
+    master = st.session_state.master_dataset
+
+    for i in range(1, 7):
+        # Если спринт уже загружен
+        if i in st.session_state.calculated_plans:
+            with st.sidebar.expander(f"✅ Спринт {i} (Факт загружен)", expanded=False):
+                st.success(f"Данные за Спринт {i} учтены в плане.")
+                new_fact = st.file_uploader(f"Перезалить факт Спринта {i}", type=["xlsx"], key=f"reupload_fact_{i}")
+                if new_fact:
+                    try:
+                        prev_plan = st.session_state.calculated_plans["baseline"]["plan"] if i == 1 else \
+                            st.session_state.calculated_plans[i - 1]["plan"]
+                        new_state = process_fact(prev_plan, master["clean_deps"],
+                                                 master["parsed"]["engineers_profiles"], master["parsed"]["estimates"],
+                                                 master["parsed"]["team_history"], new_fact.getvalue())
+                        st.session_state.calculated_plans[i] = new_state
+                        # Очищаем все последующие спринты, так как история изменилась
+                        for j in range(i + 1, 7):
+                            st.session_state.calculated_plans.pop(j, None)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Ошибка загрузки Спринта {i}")
+        # Если спринт еще не загружен (разблокируем только следующий по порядку)
+        else:
+            fact_file = st.sidebar.file_uploader(
+                f"Загрузить факт Спринта {i}",
+                type=["xlsx"],
+                key=f"upload_fact_{i}"
+            )
+            if fact_file:
+                try:
+                    prev_plan = st.session_state.calculated_plans["baseline"]["plan"] if i == 1 else \
+                        st.session_state.calculated_plans[i - 1]["plan"]
+                    new_state = process_fact(prev_plan, master["clean_deps"], master["parsed"]["engineers_profiles"],
+                                             master["parsed"]["estimates"], master["parsed"]["team_history"],
+                                             fact_file.getvalue())
+                    st.session_state.calculated_plans[i] = new_state
+                    st.rerun()
+                except Exception as e:
+                    st.sidebar.error("❌ Ошибка пересчета: Неверный формат файла.")
+            break  # Останавливаем цикл, чтобы не показывать загрузчики для N+2
+
+    st.sidebar.markdown("---")
+
+    # НАВИГАЦИЯ (Выбор текущего хронологического среза)
+    st.sidebar.markdown("### 👁 Режим просмотра")
+
+    options = {"baseline": "Снимок (Baseline Неделя 0)"}
+    for i in range(1, 7):
+        if i in st.session_state.calculated_plans:
+            options[i] = f"После Спринта {i}"
+
+    selected_mode_label = st.sidebar.radio(
+        "Текущий срез данных",
+        options=list(options.values()),
+        index=len(options) - 1  # По умолчанию выбираем самый свежий загруженный срез
     )
 
-    if fact_file:
-        active_state = process_fact(base_state, fact_file.getvalue())
-        st.sidebar.success("Факт успешно загружен и пересчитан!")
-    else:
-        active_state = base_state
+    selected_key = "baseline"
+    for k, v in options.items():
+        if v == selected_mode_label:
+            selected_key = k
+            break
 
+    page = st.sidebar.selectbox("Раздел", options=["План (PI-цикл)", "Риски и Алерты", "Звёздная карта"])
+
+    st.sidebar.markdown("---")
+    st.sidebar.info("Команда: Кронверкские псы\n\nХакатон: ПочтаТех")
+
+    # РЕНДЕР ИНТЕРФЕЙСА
+    active_state = st.session_state.calculated_plans[selected_key]
     plan_dict = active_state["plan"]
     alerts = active_state["alerts"]
     starmap = active_state["starmap"]
 
-    # Рендер глобальных KPI
     render_kpi_widgets(plan_dict.get("baseline", []), plan_dict.get("current", []))
     st.divider()
 
-    # Роутинг интерфейсов
     if page == "План (PI-цикл)":
-        render_plan_view(plan_dict, view_mode)
+        render_plan_view(plan_dict, selected_mode_label)
     elif page == "Риски и Алерты":
         render_risk_view(alerts)
     elif page == "Звёздная карта":

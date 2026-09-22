@@ -47,7 +47,12 @@ def render_star_map_view(competencies: Any) -> None:
     # Построение узлов и рёбер графа
     for eng in engineers:
         eng_id = eng.get("engineer_id")
-        if eng_id and eng_id not in added_engineers:
+
+        # Оставляем только те компетенции, которые нужны плану и посчитаны бэкендом
+        relevant_skills = [skill for skill in eng.get("skills_declared", []) if skill in bus_factors]
+
+        # Если у инженера нет нужных плану компетенций, не рисуем его висящим в воздухе
+        if eng_id and eng_id not in added_engineers and relevant_skills:
             nodes.append(Node(
                 id=eng_id,
                 label=eng_id,
@@ -57,7 +62,7 @@ def render_star_map_view(competencies: Any) -> None:
             ))
             added_engineers.add(eng_id)
 
-        for skill in eng.get("skills_declared", []):
+        for skill in relevant_skills:
             if skill not in added_skills:
                 is_critical = skill in critical_skills
                 nodes.append(Node(
