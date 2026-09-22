@@ -1,4 +1,3 @@
-# Ответственный: Человек 4 (frontend + tests + docs)
 """Страница плана по спринтам (Канбан-сетка)."""
 
 from __future__ import annotations

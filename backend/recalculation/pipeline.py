@@ -1,4 +1,3 @@
-# Ответственный: Человек 2 (recalculation + risk)
 """Единая точка входа для UI: данные → план Недели 0 → пересчёт → отчёт.
 
     from backend.recalculation.pipeline import run_quarter

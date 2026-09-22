@@ -1,4 +1,3 @@
-# Ответственный: Человек 3 (starmap + explainability)
 # ЭТОТ ФАЙЛ — КОНТРАКТ, ИСПОЛЬЗУЕТСЯ planning/scheduler.py И
 # recalculation/recalc.py, risk/alerts.py.
 """Причины решений планировщика: включение, перенос, отмена и сдвиг задач.

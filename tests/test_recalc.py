@@ -1,4 +1,3 @@
-# Ответственный: Человек 2 (recalculation + risk)
 """Тесты пересчёта, сценариев и отчёта о качестве данных."""
 
 from __future__ import annotations
@@ -235,7 +234,7 @@ def test_data_quality_reports_ghosts_duplicates_and_hh_mismatch():
     assert len(alerts) == 4
 
 
-# --- интеграция с планировщиком Матвея на реальных данных ---------------------
+# --- интеграция с планировщиком на реальных данных ------------------------------
 
 DATA = Path(__file__).resolve().parents[1] / "data" / "processed"
 

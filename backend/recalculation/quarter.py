@@ -1,4 +1,3 @@
-# Ответственный: Человек 2 (recalculation + risk)
 """Календарь квартала и сроки кадровых решений."""
 
 from __future__ import annotations

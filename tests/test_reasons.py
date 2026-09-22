@@ -1,4 +1,3 @@
-# Ответственный: Человек 3 (starmap + explainability)
 """Тесты контракта причин решений (backend/explainability/reasons.py)."""
 
 from __future__ import annotations

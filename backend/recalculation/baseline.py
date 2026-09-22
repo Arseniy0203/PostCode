@@ -1,4 +1,3 @@
-# Ответственный: Человек 2 (recalculation + risk)
 """Фиксация неизменяемого baseline-плана на Неделе 0."""
 
 from __future__ import annotations

@@ -1,4 +1,3 @@
-# Ответственный: Человек 4 (frontend + tests + docs)
 """Страница списка алертов (рисков)."""
 
 from __future__ import annotations

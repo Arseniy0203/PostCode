@@ -26,16 +26,18 @@ def parse_excel(filepath: str) -> dict[str, Any]:
         preferred = 'Датасет(обновленный)'
         names = [preferred] if preferred in xls.sheet_names else []
         names += [n for n in xls.sheet_names if n != preferred]
-        df = None
+        df, sheet_name = None, None
         for name in names:
             sheet = pd.read_excel(xls, sheet_name=name, header=None)
             if not sheet.empty and sheet[0].astype(str).str.contains(
                     TASKS_MARKER, na=False, regex=False).any():
-                df = sheet
+                df, sheet_name = sheet, name
                 break
     if df is None:
         raise ValueError("Файл не похож на датасет: ни на одном листе нет таблицы "
                          f"«{TASKS_MARKER}». Загрузите Excel в формате датасета организаторов.")
+
+    df = _fill_formula_refs(filepath, sheet_name, df)
 
     def find_row(keyword: str, required: bool = True) -> int | None:
         mask = df[0].astype(str).str.contains(keyword, na=False, regex=False)
@@ -84,7 +86,7 @@ def parse_excel(filepath: str) -> dict[str, Any]:
 
     tasks = slice_to_dict_robust(idx_tasks, end_of(idx_tasks))
     spent_time = slice_to_dict_robust(idx_spent, end_of(idx_spent))
-    # Часы по ролям — числа, в том числе «12,5» (идея Матвея).
+    # Часы по ролям — числа, в том числе «12,5».
     for row in spent_time:
         for key, value in row.items():
             if key not in ('task_id', 'Исходное время') and value is not None:
@@ -124,7 +126,7 @@ def parse_excel(filepath: str) -> dict[str, Any]:
         # Жестко берем первые 3 колонки (A, B, C)
         deps_clean = raw_deps.iloc[:, 0:3].copy()
         # Шапку (в датасете она съехала) отбрасываем по содержимому, а не «первую строку»:
-        # если шапку в скрытом датасете починят, ни одна связь не потеряется (идея Матвея).
+        # если шапку в скрытом датасете починят, ни одна связь не потеряется.
         # Принудительно задаем имена колонкам
         deps_clean.columns = ['blocking_task_id', 'blocked_task_id', 'dependency_type']
         is_header = deps_clean['blocking_task_id'].astype(str).str.contains(
@@ -176,6 +178,64 @@ def parse_excel(filepath: str) -> dict[str, Any]:
         "team_history": history,
         "duplicate_dependencies": duplicates if not raw_deps.empty else [],
     }
+
+
+_CELL_REF = re.compile(r"^=\s*\$?([A-Za-z]{1,3})\$?(\d+)\s*$")
+
+
+def _fill_formula_refs(filepath: Any, sheet_name: str, df: pd.DataFrame) -> pd.DataFrame:
+    """Подставляет значения формул-ссылок (=B24), если в файле нет их кэша.
+
+    В датасете организаторов ID задач в Spent_time_roles — формулы «=B24». Excel
+    хранит рядом вычисленное значение, и pandas читает его. Но файл, сохранённый
+    программой без пересчёта (openpyxl, часть онлайн-редакторов), хранит только
+    формулу — pandas видит пустую ячейку, и факт по задачам в работе теряется.
+    Простые ссылки на ячейку того же листа вычисляем сами; прочие формулы не трогаем.
+    """
+    try:
+        from openpyxl import load_workbook
+        from openpyxl.utils import column_index_from_string
+    except ImportError:
+        return df
+
+    def load(values_only: bool):
+        if hasattr(filepath, "seek"):
+            filepath.seek(0)
+        return load_workbook(filepath, data_only=values_only, read_only=False)
+
+    try:
+        ws_formula = load(False)[sheet_name]
+        formulas = {c.coordinate: c.value for row in ws_formula.iter_rows() for c in row
+                    if isinstance(c.value, str) and c.value.startswith("=")}
+        if not formulas:
+            return df
+        ws_cached = load(True)[sheet_name]
+    except Exception:  # noqa: BLE001 — запасной путь: не смогли — оставляем как прочитал pandas
+        return df
+
+    def resolve(coord: str, depth: int = 0) -> Any:
+        cached = ws_cached[coord].value
+        if cached is not None or coord not in formulas:
+            return cached if cached is not None else ws_formula[coord].value
+        match = _CELL_REF.match(formulas[coord])
+        if not match or depth > 20:
+            return None
+        return resolve(f"{match.group(1).upper()}{match.group(2)}", depth + 1)
+
+    # pandas читает лист начиная с первой непустой строки/колонки
+    row_offset, col_offset = ws_formula.min_row, ws_formula.min_column
+    df = df.copy()
+    for coord in formulas:
+        if ws_cached[coord].value is not None:
+            continue
+        value = resolve(coord)
+        if value is None:
+            continue
+        cell = ws_formula[coord]
+        r, c = cell.row - row_offset, cell.column - col_offset
+        if 0 <= r < len(df) and 0 <= c < len(df.columns):
+            df.iat[r, c] = value
+    return df
 
 
 def _number(value: Any) -> Any:

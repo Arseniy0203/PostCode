@@ -1,4 +1,3 @@
-# Ответственный: Человек 3 (starmap + explainability)
 """Тесты звёздной карты: профили, Bus Factor и связь риска с планом."""
 
 from __future__ import annotations

@@ -1,4 +1,3 @@
-# Ответственный: Человек 2 (recalculation + risk)
 """Пересчёт плана по факту выполнения спринта.
 
 Формат факта за спринт:
@@ -221,8 +220,14 @@ def _default_planner() -> Planner:
     return build_baseline_plan
 
 
-def _tail_input(task: dict[str, Any]) -> dict[str, Any]:
-    """Незавершённая задача для планировщика: остаток часов и пропорциональный остаток SP."""
+def _tail_input(task: dict[str, Any], company_roles: set[str] | None = None) -> dict[str, Any]:
+    """Незавершённая задача для планировщика: остаток часов и пропорциональный остаток SP.
+
+    company_roles — роли, которые есть у инженеров компании. Роли без людей
+    исключаются из расчёта SP сразу, с Недели 0, а не только после первого плана
+    (unstaffed_hh): иначе у задачи с уже потраченными часами SP на Неделе 0 и при
+    первом пересчёте считались бы по-разному и план сдвигался без отклонений.
+    """
     item = {k: v for k, v in task.items() if k not in PLANNING_FIELDS}
     left = remaining_hh(task)
     item["estimated_hh"] = {name: hours for name, hours in left.values()}
@@ -240,6 +245,8 @@ def _tail_input(task: dict[str, Any]) -> dict[str, Any]:
         # каждом пересчёте росла бы и план «уплывал» даже без отклонений.
         unstaffed = {normalize_role(r) for r in task.get("unstaffed_hh") or {}}
         estimate = {normalize_role(r): to_hours(h) for r, h in (task.get("estimated_hh") or {}).items()}
+        if company_roles is not None:
+            unstaffed |= {k for k in estimate if k not in company_roles}
         work_total = total - sum(h for k, h in estimate.items() if k in unstaffed)
         work_left = sum(h for k, (_, h) in left.items() if k not in unstaffed)
         if work_total <= 0:
@@ -266,6 +273,7 @@ def plan_tasks(
     обновлёнными полями планирования.
     """
     locked, to_planner, unestimated = [], [], set()
+    company_roles = {normalize_role(e.get("role")) for e in engineers or [] if e.get("role")}
     for task in tasks:
         if is_cancelled(task) or (is_deferred(task) and not is_done(task)):
             continue
@@ -275,7 +283,7 @@ def plan_tasks(
         elif _estimated_total(task) <= 0:
             unestimated.add(task_id(task))
         else:
-            to_planner.append(_tail_input(task))
+            to_planner.append(_tail_input(task, company_roles))
 
     result = (planner or _default_planner())(
         to_planner, capacity, dependencies, engineers,

@@ -1,4 +1,3 @@
-# Ответственный: Человек 3 (KPI)
 """Тесты KPI (backend/kpi/metrics.py): формулы и неизменность знаменателя."""
 
 from __future__ import annotations
