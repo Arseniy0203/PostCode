@@ -37,7 +37,7 @@
     {
         "role": "Итого по ролям",
         "task_id": "ONK-2475",
-        "hours": 256
+        "hours": 276
     },
     {
         "role": "Аналитик",
@@ -112,7 +112,7 @@
     {
         "role": "Итого по ролям",
         "task_id": "KP-3898",
-        "hours": 197
+        "hours": 194
     },
     {
         "role": "Аналитик",
@@ -432,7 +432,7 @@
     {
         "role": "Итого по ролям",
         "task_id": "AI-302",
-        "hours": 216
+        "hours": 256
     },
     {
         "role": "Аналитик",
@@ -482,7 +482,7 @@
     {
         "role": "Аналитик Big Data",
         "task_id": "SRV-4012",
-        "hours": 35
+        "hours": 40
     },
     {
         "role": "Архитектор решений",
@@ -527,266 +527,266 @@
     {
         "role": "Итого по ролям",
         "task_id": "SRV-4012",
-        "hours": 230
+        "hours": 275
     },
     {
         "role": "Аналитик",
-        "task_id": "SRV-4013",
+        "task_id": "SRV-4010",
         "hours": 30
     },
     {
         "role": "Разработчик Java",
-        "task_id": "SRV-4013",
+        "task_id": "SRV-4010",
         "hours": 40
     },
     {
         "role": "Руководитель проекта",
-        "task_id": "SRV-4013",
+        "task_id": "SRV-4010",
         "hours": 20
     },
     {
         "role": "Специалист поддержки",
-        "task_id": "SRV-4013",
+        "task_id": "SRV-4010",
         "hours": 10
     },
     {
         "role": "Тестировщик",
-        "task_id": "SRV-4013",
+        "task_id": "SRV-4010",
         "hours": 10
     },
     {
         "role": "Итого по ролям",
-        "task_id": "SRV-4013",
+        "task_id": "SRV-4010",
         "hours": 110
     },
     {
         "role": "Аналитик",
-        "task_id": "SRV-4014",
+        "task_id": "SRV-4021",
         "hours": 60
     },
     {
         "role": "Архитектор решений",
-        "task_id": "SRV-4014",
+        "task_id": "SRV-4021",
         "hours": 40
     },
     {
         "role": "ДевОпс",
-        "task_id": "SRV-4014",
+        "task_id": "SRV-4021",
         "hours": 20
     },
     {
         "role": "Дизайнер",
-        "task_id": "SRV-4014",
+        "task_id": "SRV-4021",
         "hours": 40
     },
     {
         "role": "Разработчик Java",
-        "task_id": "SRV-4014",
+        "task_id": "SRV-4021",
         "hours": 100
     },
     {
         "role": "Разработчик Java Script",
-        "task_id": "SRV-4014",
+        "task_id": "SRV-4021",
         "hours": 40
     },
     {
         "role": "Руководитель проекта",
-        "task_id": "SRV-4014",
+        "task_id": "SRV-4021",
         "hours": 40
     },
     {
         "role": "Специалист поддержки",
-        "task_id": "SRV-4014",
+        "task_id": "SRV-4021",
         "hours": 10
     },
     {
         "role": "Тестировщик",
-        "task_id": "SRV-4014",
+        "task_id": "SRV-4021",
         "hours": 30
     },
     {
         "role": "Итого по ролям",
-        "task_id": "SRV-4014",
+        "task_id": "SRV-4021",
         "hours": 340
     },
     {
         "role": "Аналитик",
-        "task_id": "SRV-4015",
+        "task_id": "SRV-4022",
         "hours": 40
     },
     {
         "role": "Архитектор решений",
-        "task_id": "SRV-4015",
+        "task_id": "SRV-4022",
         "hours": 30
     },
     {
         "role": "ДевОпс",
-        "task_id": "SRV-4015",
+        "task_id": "SRV-4022",
         "hours": 30
     },
     {
         "role": "Разработчик Java",
-        "task_id": "SRV-4015",
+        "task_id": "SRV-4022",
         "hours": 80
     },
     {
         "role": "Руководитель проекта",
-        "task_id": "SRV-4015",
+        "task_id": "SRV-4022",
         "hours": 20
     },
     {
         "role": "Специалист поддержки",
-        "task_id": "SRV-4015",
+        "task_id": "SRV-4022",
         "hours": 10
     },
     {
         "role": "Тестировщик",
-        "task_id": "SRV-4015",
+        "task_id": "SRV-4022",
         "hours": 10
     },
     {
         "role": "Итого по ролям",
-        "task_id": "SRV-4015",
+        "task_id": "SRV-4022",
         "hours": 220
     },
     {
         "role": "Аналитик",
-        "task_id": "SRV-4016",
+        "task_id": "SRV-4023",
         "hours": 50
     },
     {
         "role": "Аналитик Big Data",
-        "task_id": "SRV-4016",
+        "task_id": "SRV-4023",
         "hours": 35
     },
     {
         "role": "Разработчик Java",
-        "task_id": "SRV-4016",
+        "task_id": "SRV-4023",
         "hours": 40
     },
     {
         "role": "Руководитель проекта",
-        "task_id": "SRV-4016",
+        "task_id": "SRV-4023",
         "hours": 20
     },
     {
         "role": "Специалист поддержки",
-        "task_id": "SRV-4016",
+        "task_id": "SRV-4023",
         "hours": 10
     },
     {
         "role": "Тестировщик",
-        "task_id": "SRV-4016",
+        "task_id": "SRV-4023",
         "hours": 10
     },
     {
         "role": "Итого по ролям",
-        "task_id": "SRV-4016",
-        "hours": 115
+        "task_id": "SRV-4023",
+        "hours": 165
     },
     {
         "role": "Аналитик",
-        "task_id": "SRV-4017",
+        "task_id": "SRV-4031",
         "hours": 10
     },
     {
         "role": "Архитектор решений",
-        "task_id": "SRV-4017",
+        "task_id": "SRV-4031",
         "hours": 20
     },
     {
         "role": "ДевОпс",
-        "task_id": "SRV-4017",
+        "task_id": "SRV-4031",
         "hours": 40
     },
     {
         "role": "Руководитель проекта",
-        "task_id": "SRV-4017",
+        "task_id": "SRV-4031",
         "hours": 10
     },
     {
         "role": "Тестировщик",
-        "task_id": "SRV-4017",
+        "task_id": "SRV-4031",
         "hours": 10
     },
     {
         "role": "Итого по ролям",
-        "task_id": "SRV-4017",
+        "task_id": "SRV-4031",
         "hours": 90
     },
     {
         "role": "Аналитик",
-        "task_id": "SRV-4018",
+        "task_id": "SRV-4032",
         "hours": 20
     },
     {
         "role": "Архитектор решений",
-        "task_id": "SRV-4018",
+        "task_id": "SRV-4032",
         "hours": 20
     },
     {
         "role": "ДевОпс",
-        "task_id": "SRV-4018",
+        "task_id": "SRV-4032",
         "hours": 20
     },
     {
         "role": "Разработчик Java",
-        "task_id": "SRV-4018",
+        "task_id": "SRV-4032",
         "hours": 80
     },
     {
         "role": "Руководитель проекта",
-        "task_id": "SRV-4018",
+        "task_id": "SRV-4032",
         "hours": 20
     },
     {
         "role": "Специалист поддержки",
-        "task_id": "SRV-4018",
+        "task_id": "SRV-4032",
         "hours": 10
     },
     {
         "role": "Тестировщик",
-        "task_id": "SRV-4018",
+        "task_id": "SRV-4032",
         "hours": 10
     },
     {
         "role": "Итого по ролям",
-        "task_id": "SRV-4018",
+        "task_id": "SRV-4032",
         "hours": 180
     },
     {
         "role": "Аналитик",
-        "task_id": "SRV-4019",
+        "task_id": "SRV-4033",
         "hours": 40
     },
     {
         "role": "Аналитик Big Data",
-        "task_id": "SRV-4019",
+        "task_id": "SRV-4033",
         "hours": 40
     },
     {
         "role": "Дизайнер",
-        "task_id": "SRV-4019",
+        "task_id": "SRV-4033",
         "hours": 20
     },
     {
         "role": "Разработчик Big Data",
-        "task_id": "SRV-4019",
+        "task_id": "SRV-4033",
         "hours": 20
     },
     {
         "role": "Руководитель проекта",
-        "task_id": "SRV-4019",
+        "task_id": "SRV-4033",
         "hours": 10
     },
     {
         "role": "Тестировщик",
-        "task_id": "SRV-4019",
+        "task_id": "SRV-4033",
         "hours": 10
     },
     {
         "role": "Итого по ролям",
-        "task_id": "SRV-4019",
+        "task_id": "SRV-4033",
         "hours": 140
     },
     {
@@ -831,838 +831,428 @@
     },
     {
         "role": "Аналитик",
-        "task_id": "MOB-7013",
+        "task_id": "SRV-4042",
         "hours": 30
     },
     {
         "role": "Разработчик Android",
-        "task_id": "MOB-7013",
+        "task_id": "SRV-4042",
         "hours": 30
     },
     {
         "role": "Разработчик iOS",
-        "task_id": "MOB-7013",
+        "task_id": "SRV-4042",
         "hours": 40
     },
     {
         "role": "Разработчик Java",
-        "task_id": "MOB-7013",
+        "task_id": "SRV-4042",
         "hours": 10
     },
     {
         "role": "Тестировщик",
-        "task_id": "MOB-7013",
+        "task_id": "SRV-4042",
         "hours": 10
     },
     {
         "role": "Итого по ролям",
-        "task_id": "MOB-7013",
+        "task_id": "SRV-4042",
         "hours": 120
     },
     {
         "role": "Аналитик 1С",
-        "task_id": "ANL-3042",
+        "task_id": "SRV-4043",
         "hours": 10
     },
     {
         "role": "Разработчик 1С",
-        "task_id": "ANL-3042",
+        "task_id": "SRV-4043",
         "hours": 50
     },
     {
         "role": "Разработчик BigData",
-        "task_id": "ANL-3042",
+        "task_id": "SRV-4043",
         "hours": 10
     },
     {
         "role": "Специалист поддержки 1С",
-        "task_id": "ANL-3042",
+        "task_id": "SRV-4043",
         "hours": 2
     },
     {
         "role": "Тестировщик",
-        "task_id": "ANL-3042",
+        "task_id": "SRV-4043",
         "hours": 18
     },
     {
         "role": "Итого по ролям",
-        "task_id": "ANL-3042",
+        "task_id": "SRV-4043",
         "hours": 90
     },
     {
         "role": "Аналитик",
-        "task_id": "AI-303",
+        "task_id": "SRV-4051",
         "hours": 30
     },
     {
         "role": "Архитектор решений",
-        "task_id": "AI-303",
+        "task_id": "SRV-4051",
         "hours": 30
     },
     {
         "role": "Разработчик Java",
-        "task_id": "AI-303",
+        "task_id": "SRV-4051",
         "hours": 15
     },
     {
         "role": "Тестировщик",
-        "task_id": "AI-303",
+        "task_id": "SRV-4051",
         "hours": 10
     },
     {
         "role": "Тестировщик (Автотестирование)",
-        "task_id": "AI-303",
+        "task_id": "SRV-4051",
         "hours": 15
     },
     {
         "role": "Итого по ролям",
-        "task_id": "AI-303",
+        "task_id": "SRV-4051",
         "hours": 100
     },
     {
         "role": "Аналитик",
-        "task_id": "SRV-4010",
+        "task_id": "SRV-4052",
         "hours": 10
     },
     {
         "role": "Аналитик Big Data",
-        "task_id": "SRV-4010",
+        "task_id": "SRV-4052",
         "hours": 10
     },
     {
         "role": "Архитектор решений",
-        "task_id": "SRV-4010",
+        "task_id": "SRV-4052",
         "hours": 10
     },
     {
         "role": "ДевОпс",
-        "task_id": "SRV-4010",
+        "task_id": "SRV-4052",
         "hours": 2
     },
     {
         "role": "Дизайнер",
-        "task_id": "SRV-4010",
+        "task_id": "SRV-4052",
         "hours": 15
     },
     {
         "role": "Разработчик Big Data",
-        "task_id": "SRV-4010",
+        "task_id": "SRV-4052",
         "hours": 20
     },
     {
         "role": "Разработчик Java",
-        "task_id": "SRV-4010",
+        "task_id": "SRV-4052",
         "hours": 20
     },
     {
         "role": "Руководитель проекта",
-        "task_id": "SRV-4010",
+        "task_id": "SRV-4052",
         "hours": 10
     },
     {
         "role": "Тестировщик",
-        "task_id": "SRV-4010",
+        "task_id": "SRV-4052",
         "hours": 3
     },
     {
         "role": "Тестировщик (Автотестирование)",
-        "task_id": "SRV-4010",
+        "task_id": "SRV-4052",
         "hours": 10
     },
     {
         "role": "Итого по ролям",
-        "task_id": "SRV-4010",
+        "task_id": "SRV-4052",
         "hours": 110
     },
     {
         "role": "Аналитик",
-        "task_id": "SRV-4021",
+        "task_id": "SRV-4061",
         "hours": 30
     },
     {
         "role": "Разработчик Java",
-        "task_id": "SRV-4021",
+        "task_id": "SRV-4061",
         "hours": 40
     },
     {
         "role": "Руководитель проекта",
-        "task_id": "SRV-4021",
+        "task_id": "SRV-4061",
         "hours": 20
     },
     {
         "role": "Специалист поддержки",
-        "task_id": "SRV-4021",
+        "task_id": "SRV-4061",
         "hours": 10
     },
     {
         "role": "Тестировщик",
-        "task_id": "SRV-4021",
+        "task_id": "SRV-4061",
         "hours": 10
     },
     {
         "role": "Итого по ролям",
-        "task_id": "SRV-4021",
+        "task_id": "SRV-4061",
         "hours": 110
     },
     {
         "role": "Аналитик",
-        "task_id": "SRV-4022",
+        "task_id": "SRV-4062",
         "hours": 40
     },
     {
         "role": "Архитектор решений",
-        "task_id": "SRV-4022",
+        "task_id": "SRV-4062",
         "hours": 8
     },
     {
         "role": "ДевОпс",
-        "task_id": "SRV-4022",
+        "task_id": "SRV-4062",
         "hours": 8
     },
     {
         "role": "Разработчик Java",
-        "task_id": "SRV-4022",
+        "task_id": "SRV-4062",
         "hours": 48
     },
     {
         "role": "Руководитель проекта",
-        "task_id": "SRV-4022",
+        "task_id": "SRV-4062",
         "hours": 20
     },
     {
         "role": "Тестировщик",
-        "task_id": "SRV-4022",
+        "task_id": "SRV-4062",
         "hours": 6
     },
     {
         "role": "Итого по ролям",
-        "task_id": "SRV-4022",
+        "task_id": "SRV-4062",
         "hours": 130
     },
     {
         "role": "Аналитик",
-        "task_id": "SRV-4023",
+        "task_id": "SRV-4063",
         "hours": 20
     },
     {
         "role": "Аналитик Big Data",
-        "task_id": "SRV-4023",
+        "task_id": "SRV-4063",
         "hours": 20
     },
     {
         "role": "Дизайнер",
-        "task_id": "SRV-4023",
+        "task_id": "SRV-4063",
         "hours": 10
     },
     {
         "role": "Разработчик Big Data",
-        "task_id": "SRV-4023",
+        "task_id": "SRV-4063",
         "hours": 10
     },
     {
         "role": "Руководитель проекта",
-        "task_id": "SRV-4023",
+        "task_id": "SRV-4063",
         "hours": 5
     },
     {
         "role": "Тестировщик",
-        "task_id": "SRV-4023",
+        "task_id": "SRV-4063",
         "hours": 5
     },
     {
         "role": "Итого по ролям",
-        "task_id": "SRV-4023",
+        "task_id": "SRV-4063",
         "hours": 70
     },
     {
         "role": "Аналитик",
-        "task_id": "SRV-4031",
+        "task_id": "SRV-4071",
         "hours": 80
     },
     {
         "role": "Архитектор решений",
-        "task_id": "SRV-4031",
+        "task_id": "SRV-4071",
         "hours": 30
     },
     {
         "role": "ДевОпс",
-        "task_id": "SRV-4031",
+        "task_id": "SRV-4071",
         "hours": 30
     },
     {
         "role": "Дизайнер",
-        "task_id": "SRV-4031",
+        "task_id": "SRV-4071",
         "hours": 30
     },
     {
         "role": "Разработчик Java",
-        "task_id": "SRV-4031",
+        "task_id": "SRV-4071",
         "hours": 80
     },
     {
         "role": "Руководитель проекта",
-        "task_id": "SRV-4031",
+        "task_id": "SRV-4071",
         "hours": 20
     },
     {
         "role": "Специалист поддержки",
-        "task_id": "SRV-4031",
+        "task_id": "SRV-4071",
         "hours": 10
     },
     {
         "role": "Тестировщик",
-        "task_id": "SRV-4031",
+        "task_id": "SRV-4071",
         "hours": 30
     },
     {
         "role": "Тестировщик (Автотестирование)",
-        "task_id": "SRV-4031",
+        "task_id": "SRV-4071",
         "hours": 30
     },
     {
         "role": "Итого по ролям",
-        "task_id": "SRV-4031",
+        "task_id": "SRV-4071",
         "hours": 340
     },
     {
         "role": "Аналитик",
-        "task_id": "SRV-4032",
+        "task_id": "SRV-4072",
         "hours": 20
     },
     {
         "role": "Архитектор решений",
-        "task_id": "SRV-4032",
+        "task_id": "SRV-4072",
         "hours": 20
     },
     {
         "role": "ДевОпс",
-        "task_id": "SRV-4032",
+        "task_id": "SRV-4072",
         "hours": 20
     },
     {
         "role": "Разработчик Java",
-        "task_id": "SRV-4032",
+        "task_id": "SRV-4072",
         "hours": 80
     },
     {
         "role": "Руководитель проекта",
-        "task_id": "SRV-4032",
+        "task_id": "SRV-4072",
         "hours": 20
     },
     {
         "role": "Специалист поддержки",
-        "task_id": "SRV-4032",
+        "task_id": "SRV-4072",
         "hours": 10
     },
     {
         "role": "Тестировщик",
-        "task_id": "SRV-4032",
+        "task_id": "SRV-4072",
         "hours": 10
     },
     {
         "role": "Итого по ролям",
-        "task_id": "SRV-4032",
+        "task_id": "SRV-4072",
         "hours": 180
     },
     {
         "role": "Аналитик",
-        "task_id": "SRV-4033",
+        "task_id": "SRV-4081",
         "hours": 30
     },
     {
         "role": "Архитектор решений",
-        "task_id": "SRV-4033",
+        "task_id": "SRV-4081",
         "hours": 10
     },
     {
         "role": "ДевОпс",
-        "task_id": "SRV-4033",
+        "task_id": "SRV-4081",
         "hours": 10
     },
     {
         "role": "Разработчик Java",
-        "task_id": "SRV-4033",
+        "task_id": "SRV-4081",
         "hours": 40
     },
     {
         "role": "Руководитель проекта",
-        "task_id": "SRV-4033",
+        "task_id": "SRV-4081",
         "hours": 15
     },
     {
         "role": "Тестировщик",
-        "task_id": "SRV-4033",
+        "task_id": "SRV-4081",
         "hours": 10
     },
     {
         "role": "Тестировщик (Автотестирование)",
-        "task_id": "SRV-4033",
+        "task_id": "SRV-4081",
         "hours": 5
     },
     {
         "role": "Итого по ролям",
-        "task_id": "SRV-4033",
+        "task_id": "SRV-4081",
         "hours": 120
     },
     {
         "role": "Аналитик",
-        "task_id": "SRV-4042",
+        "task_id": "SRV-4082",
         "hours": 20
     },
     {
         "role": "Архитектор решений",
-        "task_id": "SRV-4042",
+        "task_id": "SRV-4082",
         "hours": 10
     },
     {
         "role": "ДевОпс",
-        "task_id": "SRV-4042",
+        "task_id": "SRV-4082",
         "hours": 10
     },
     {
         "role": "Разработчик Java",
-        "task_id": "SRV-4042",
+        "task_id": "SRV-4082",
         "hours": 70
     },
     {
         "role": "Руководитель проекта",
-        "task_id": "SRV-4042",
+        "task_id": "SRV-4082",
         "hours": 20
     },
     {
         "role": "Специалист поддержки",
-        "task_id": "SRV-4042",
+        "task_id": "SRV-4082",
         "hours": 10
     },
     {
         "role": "Тестировщик",
-        "task_id": "SRV-4042",
+        "task_id": "SRV-4082",
         "hours": 10
     },
     {
         "role": "Итого по ролям",
-        "task_id": "SRV-4042",
+        "task_id": "SRV-4082",
         "hours": 150
     },
     {
         "role": "Аналитик",
-        "task_id": "SRV-4043",
+        "task_id": "SRV-4091",
         "hours": 10
-    },
-    {
-        "role": "Архитектор решений",
-        "task_id": "SRV-4043",
-        "hours": 20
-    },
-    {
-        "role": "ДевОпс",
-        "task_id": "SRV-4043",
-        "hours": 40
-    },
-    {
-        "role": "Руководитель проекта",
-        "task_id": "SRV-4043",
-        "hours": 10
-    },
-    {
-        "role": "Тестировщик",
-        "task_id": "SRV-4043",
-        "hours": 10
-    },
-    {
-        "role": "Итого по ролям",
-        "task_id": "SRV-4043",
-        "hours": 90
-    },
-    {
-        "role": "Аналитик",
-        "task_id": "SRV-4051",
-        "hours": 40
-    },
-    {
-        "role": "Архитектор решений",
-        "task_id": "SRV-4051",
-        "hours": 8
-    },
-    {
-        "role": "ДевОпс",
-        "task_id": "SRV-4051",
-        "hours": 8
-    },
-    {
-        "role": "Разработчик Java",
-        "task_id": "SRV-4051",
-        "hours": 48
-    },
-    {
-        "role": "Руководитель проекта",
-        "task_id": "SRV-4051",
-        "hours": 20
-    },
-    {
-        "role": "Тестировщик",
-        "task_id": "SRV-4051",
-        "hours": 6
-    },
-    {
-        "role": "Итого по ролям",
-        "task_id": "SRV-4051",
-        "hours": 130
-    },
-    {
-        "role": "Аналитик",
-        "task_id": "SRV-4052",
-        "hours": 20
-    },
-    {
-        "role": "Архитектор решений",
-        "task_id": "SRV-4052",
-        "hours": 15
-    },
-    {
-        "role": "ДевОпс",
-        "task_id": "SRV-4052",
-        "hours": 15
-    },
-    {
-        "role": "Разработчик Java",
-        "task_id": "SRV-4052",
-        "hours": 75
-    },
-    {
-        "role": "Руководитель проекта",
-        "task_id": "SRV-4052",
-        "hours": 15
-    },
-    {
-        "role": "Специалист поддержки",
-        "task_id": "SRV-4052",
-        "hours": 10
-    },
-    {
-        "role": "Тестировщик",
-        "task_id": "SRV-4052",
-        "hours": 10
-    },
-    {
-        "role": "Итого по ролям",
-        "task_id": "SRV-4052",
-        "hours": 160
-    },
-    {
-        "role": "Аналитик",
-        "task_id": "SRV-4061",
-        "hours": 10
-    },
-    {
-        "role": "Архитектор решений",
-        "task_id": "SRV-4061",
-        "hours": 20
-    },
-    {
-        "role": "ДевОпс",
-        "task_id": "SRV-4061",
-        "hours": 40
-    },
-    {
-        "role": "Руководитель проекта",
-        "task_id": "SRV-4061",
-        "hours": 10
-    },
-    {
-        "role": "Тестировщик",
-        "task_id": "SRV-4061",
-        "hours": 10
-    },
-    {
-        "role": "Итого по ролям",
-        "task_id": "SRV-4061",
-        "hours": 90
-    },
-    {
-        "role": "Аналитик",
-        "task_id": "SRV-4062",
-        "hours": 30
-    },
-    {
-        "role": "Архитектор решений",
-        "task_id": "SRV-4062",
-        "hours": 20
-    },
-    {
-        "role": "ДевОпс",
-        "task_id": "SRV-4062",
-        "hours": 20
-    },
-    {
-        "role": "Разработчик Java",
-        "task_id": "SRV-4062",
-        "hours": 40
-    },
-    {
-        "role": "Руководитель проекта",
-        "task_id": "SRV-4062",
-        "hours": 20
-    },
-    {
-        "role": "Тестировщик",
-        "task_id": "SRV-4062",
-        "hours": 5
-    },
-    {
-        "role": "Тестировщик (Автотестирование)",
-        "task_id": "SRV-4062",
-        "hours": 5
-    },
-    {
-        "role": "Итого по ролям",
-        "task_id": "SRV-4062",
-        "hours": 140
-    },
-    {
-        "role": "Аналитик",
-        "task_id": "SRV-4063",
-        "hours": 20
-    },
-    {
-        "role": "Архитектор решений",
-        "task_id": "SRV-4063",
-        "hours": 5
-    },
-    {
-        "role": "ДевОпс",
-        "task_id": "SRV-4063",
-        "hours": 5
-    },
-    {
-        "role": "Разработчик Java",
-        "task_id": "SRV-4063",
-        "hours": 40
-    },
-    {
-        "role": "Руководитель проекта",
-        "task_id": "SRV-4063",
-        "hours": 15
-    },
-    {
-        "role": "Тестировщик",
-        "task_id": "SRV-4063",
-        "hours": 10
-    },
-    {
-        "role": "Тестировщик (Автотестирование)",
-        "task_id": "SRV-4063",
-        "hours": 5
-    },
-    {
-        "role": "Итого по ролям",
-        "task_id": "SRV-4063",
-        "hours": 100
-    },
-    {
-        "role": "Аналитик",
-        "task_id": "SRV-4071",
-        "hours": 40
-    },
-    {
-        "role": "Архитектор решений",
-        "task_id": "SRV-4071",
-        "hours": 20
-    },
-    {
-        "role": "ДевОпс",
-        "task_id": "SRV-4071",
-        "hours": 20
-    },
-    {
-        "role": "Дизайнер",
-        "task_id": "SRV-4071",
-        "hours": 10
-    },
-    {
-        "role": "Разработчик Java",
-        "task_id": "SRV-4071",
-        "hours": 40
-    },
-    {
-        "role": "Разработчик Java Script",
-        "task_id": "SRV-4071",
-        "hours": 10
-    },
-    {
-        "role": "Руководитель проекта",
-        "task_id": "SRV-4071",
-        "hours": 20
-    },
-    {
-        "role": "Тестировщик",
-        "task_id": "SRV-4071",
-        "hours": 10
-    },
-    {
-        "role": "Тестировщик (Автотестирование)",
-        "task_id": "SRV-4071",
-        "hours": 10
-    },
-    {
-        "role": "Итого по ролям",
-        "task_id": "SRV-4071",
-        "hours": 180
-    },
-    {
-        "role": "Аналитик",
-        "task_id": "SRV-4072",
-        "hours": 25
-    },
-    {
-        "role": "Архитектор решений",
-        "task_id": "SRV-4072",
-        "hours": 5
-    },
-    {
-        "role": "ДевОпс",
-        "task_id": "SRV-4072",
-        "hours": 10
-    },
-    {
-        "role": "Дизайнер",
-        "task_id": "SRV-4072",
-        "hours": 15
-    },
-    {
-        "role": "Разработчик Java",
-        "task_id": "SRV-4072",
-        "hours": 70
-    },
-    {
-        "role": "Разработчик Java Script",
-        "task_id": "SRV-4072",
-        "hours": 20
-    },
-    {
-        "role": "Руководитель проекта",
-        "task_id": "SRV-4072",
-        "hours": 40
-    },
-    {
-        "role": "Специалист поддержки",
-        "task_id": "SRV-4072",
-        "hours": 10
-    },
-    {
-        "role": "Тестировщик",
-        "task_id": "SRV-4072",
-        "hours": 10
-    },
-    {
-        "role": "Тестировщик (Автотестирование)",
-        "task_id": "SRV-4072",
-        "hours": 5
-    },
-    {
-        "role": "Итого по ролям",
-        "task_id": "SRV-4072",
-        "hours": 210
-    },
-    {
-        "role": "Аналитик",
-        "task_id": "SRV-4081",
-        "hours": 40
-    },
-    {
-        "role": "Архитектор решений",
-        "task_id": "SRV-4081",
-        "hours": 10
-    },
-    {
-        "role": "ДевОпс",
-        "task_id": "SRV-4081",
-        "hours": 10
-    },
-    {
-        "role": "Разработчик Java",
-        "task_id": "SRV-4081",
-        "hours": 50
-    },
-    {
-        "role": "Руководитель проекта",
-        "task_id": "SRV-4081",
-        "hours": 15
-    },
-    {
-        "role": "Тестировщик",
-        "task_id": "SRV-4081",
-        "hours": 10
-    },
-    {
-        "role": "Тестировщик (Автотестирование)",
-        "task_id": "SRV-4081",
-        "hours": 5
-    },
-    {
-        "role": "Итого по ролям",
-        "task_id": "SRV-4081",
-        "hours": 140
-    },
-    {
-        "role": "Аналитик",
-        "task_id": "SRV-4082",
-        "hours": 30
     },
     {
         "role": "Архитектор 1С",
-        "task_id": "SRV-4082",
-        "hours": 3
-    },
-    {
-        "role": "Архитектор решений",
-        "task_id": "SRV-4082",
-        "hours": 10
-    },
-    {
-        "role": "ДевОпс",
-        "task_id": "SRV-4082",
-        "hours": 10
-    },
-    {
-        "role": "Разработчик 1С",
-        "task_id": "SRV-4082",
-        "hours": 57
-    },
-    {
-        "role": "Разработчик Java",
-        "task_id": "SRV-4082",
-        "hours": 40
-    },
-    {
-        "role": "Руководитель проекта",
-        "task_id": "SRV-4082",
-        "hours": 15
-    },
-    {
-        "role": "Специалист поддержки 1С",
-        "task_id": "SRV-4082",
-        "hours": 10
-    },
-    {
-        "role": "Тестировщик",
-        "task_id": "SRV-4082",
-        "hours": 10
-    },
-    {
-        "role": "Тестировщик (Автотестирование)",
-        "task_id": "SRV-4082",
-        "hours": 5
-    },
-    {
-        "role": "Итого по ролям",
-        "task_id": "SRV-4082",
-        "hours": 190
-    },
-    {
-        "role": "Аналитик",
         "task_id": "SRV-4091",
-        "hours": 20
+        "hours": 3
     },
     {
         "role": "Архитектор решений",
@@ -1673,6 +1263,11 @@
         "role": "ДевОпс",
         "task_id": "SRV-4091",
         "hours": 17
+    },
+    {
+        "role": "Разработчик 1С",
+        "task_id": "SRV-4091",
+        "hours": 57
     },
     {
         "role": "Разработчик Java",
@@ -1697,12 +1292,12 @@
     {
         "role": "Итого по ролям",
         "task_id": "SRV-4091",
-        "hours": 120
+        "hours": 90
     },
     {
         "role": "Аналитик",
         "task_id": "SRV-4092",
-        "hours": 45
+        "hours": 40
     },
     {
         "role": "Архитектор решений",
@@ -1752,12 +1347,12 @@
     {
         "role": "Итого по ролям",
         "task_id": "SRV-4092",
-        "hours": 240
+        "hours": 130
     },
     {
         "role": "Аналитик",
         "task_id": "SRV-4093",
-        "hours": 40
+        "hours": 20
     },
     {
         "role": "Архитектор решений",
@@ -1793,5 +1388,130 @@
         "role": "Итого по ролям",
         "task_id": "SRV-4093",
         "hours": 160
+    },
+    {
+        "role": "Аналитик",
+        "task_id": "MOB-7013",
+        "hours": 10
+    },
+    {
+        "role": "Архитектор решений",
+        "task_id": "MOB-7013",
+        "hours": 20
+    },
+    {
+        "role": "ДевОпс",
+        "task_id": "MOB-7013",
+        "hours": 40
+    },
+    {
+        "role": "Руководитель проекта",
+        "task_id": "MOB-7013",
+        "hours": 15
+    },
+    {
+        "role": "Специалист поддержки 1С",
+        "task_id": "MOB-7013",
+        "hours": 10
+    },
+    {
+        "role": "Тестировщик",
+        "task_id": "MOB-7013",
+        "hours": 10
+    },
+    {
+        "role": "Тестировщик (Автотестирование)",
+        "task_id": "MOB-7013",
+        "hours": 5
+    },
+    {
+        "role": "Итого по ролям",
+        "task_id": "MOB-7013",
+        "hours": 140
+    },
+    {
+        "role": "Аналитик",
+        "task_id": "ANL-3042",
+        "hours": 40
+    },
+    {
+        "role": "Архитектор решений",
+        "task_id": "ANL-3042",
+        "hours": 5
+    },
+    {
+        "role": "ДевОпс",
+        "task_id": "ANL-3042",
+        "hours": 20
+    },
+    {
+        "role": "Разработчик Java",
+        "task_id": "ANL-3042",
+        "hours": 40
+    },
+    {
+        "role": "Руководитель проекта",
+        "task_id": "ANL-3042",
+        "hours": 20
+    },
+    {
+        "role": "Тестировщик",
+        "task_id": "ANL-3042",
+        "hours": 5
+    },
+    {
+        "role": "Тестировщик (Автотестирование)",
+        "task_id": "ANL-3042",
+        "hours": 5
+    },
+    {
+        "role": "Итого по ролям",
+        "task_id": "ANL-3042",
+        "hours": 190
+    },
+    {
+        "role": "Аналитик",
+        "task_id": "AI-303",
+        "hours": 20
+    },
+    {
+        "role": "Архитектор решений",
+        "task_id": "AI-303",
+        "hours": 20
+    },
+    {
+        "role": "ДевОпс",
+        "task_id": "AI-303",
+        "hours": 5
+    },
+    {
+        "role": "Дизайнер",
+        "task_id": "AI-303",
+        "hours": 10
+    },
+    {
+        "role": "Разработчик Java",
+        "task_id": "AI-303",
+        "hours": 40
+    },
+    {
+        "role": "Руководитель проекта",
+        "task_id": "AI-303",
+        "hours": 40
+    },
+    {
+        "role": "Тестировщик",
+        "task_id": "AI-303",
+        "hours": 10
+    },
+    {
+        "role": "Тестировщик (Автотестирование)",
+        "task_id": "AI-303",
+        "hours": 10
+    },
+    {
+        "role": "Итого по ролям",
+        "task_id": "AI-303",
+        "hours": 120
     }
 ]

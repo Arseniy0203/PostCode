@@ -20,11 +20,6 @@
         "dependency_type": "is required for"
     },
     {
-        "blocking_task_id": "DB-202",
-        "blocked_task_id": "MP-102",
-        "dependency_type": "depends on"
-    },
-    {
         "blocking_task_id": "MP-101",
         "blocked_task_id": "AI-302",
         "dependency_type": "depends on"
@@ -46,17 +41,57 @@
     },
     {
         "blocking_task_id": "DB-201",
-        "blocked_task_id": "DB-202",
-        "dependency_type": "is required for"
-    },
-    {
-        "blocking_task_id": "DB-202",
         "blocked_task_id": "DB-203",
-        "dependency_type": "has to be done before"
+        "dependency_type": "is required for"
     },
     {
         "blocking_task_id": "AI-301",
         "blocked_task_id": "AI-302",
         "dependency_type": "is required for"
+    },
+    {
+        "blocking_task_id": "SRV-4011",
+        "blocked_task_id": "SRV-4010",
+        "dependency_type": "has to be done before"
+    },
+    {
+        "blocking_task_id": "SRV-4021",
+        "blocked_task_id": "SRV-4022",
+        "dependency_type": "is required for"
+    },
+    {
+        "blocking_task_id": "SRV-4031",
+        "blocked_task_id": "SRV-4032",
+        "dependency_type": "has to be done before"
+    },
+    {
+        "blocking_task_id": "SRV-4041",
+        "blocked_task_id": "SRV-4042",
+        "dependency_type": "is required for"
+    },
+    {
+        "blocking_task_id": "SRV-4051",
+        "blocked_task_id": "SRV-4052",
+        "dependency_type": "depends on"
+    },
+    {
+        "blocking_task_id": "SRV-4061",
+        "blocked_task_id": "SRV-4062",
+        "dependency_type": "is required for"
+    },
+    {
+        "blocking_task_id": "SRV-4071",
+        "blocked_task_id": "SRV-4072",
+        "dependency_type": "depends on"
+    },
+    {
+        "blocking_task_id": "SRV-4081",
+        "blocked_task_id": "SRV-4082",
+        "dependency_type": "is required for"
+    },
+    {
+        "blocking_task_id": "SRV-4091",
+        "blocked_task_id": "SRV-4092",
+        "dependency_type": "has to be done before"
     }
 ]
