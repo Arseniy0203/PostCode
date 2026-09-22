@@ -40,7 +40,7 @@ from backend.recalculation.plan_fields import (
     remaining_hh,
     task_id,
 )
-from backend.recalculation.quarter import sprint_label
+from backend.recalculation.quarter import average_ramp, sprint_label
 from backend.risk.alerts import (
     SPRINT_HOURS,
     Alert,
@@ -63,6 +63,10 @@ PLANNING_FIELDS = (
     "forecast_end_sprint",
     "allocation",
     "assigned_engineers",
+    "sp_by_sprint",
+    "unstaffed_hh",
+    "recommendation",
+    "score",
 )
 _SERVICE_COLUMNS = {normalize_role("task_id"), normalize_role("Исходное время")}
 _TOTAL_ROW = normalize_role("Итого по ролям")
@@ -103,12 +107,70 @@ def defer_reason(task: Any) -> dict[str, Any]:
 def mark_deferred(tasks: list[dict[str, Any]], defer: dict[str, str] | list[str] | None,
                   sprint: int = 0) -> list[str]:
     """Помечает задачи перенесёнными; возвращает id, которых нет среди задач."""
-    notes = dict.fromkeys(defer, "") if isinstance(defer, list) else dict(defer or {})
+    notes = dict(defer) if isinstance(defer, dict) else dict.fromkeys(defer or (), "")
     by_id = {task_id(t): t for t in tasks}
     for tid, note in notes.items():
         if tid in by_id:
             by_id[tid].update(deferred=True, deferred_sprint=sprint, defer_note=note or None)
     return [tid for tid in notes if tid not in by_id]
+
+
+_STATUS_SYNONYMS = {
+    **dict.fromkeys(("done", "выполнено", "выполнена", "готово", "готова", "закрыта", "закрыто",
+                     "завершена", "завершено", "closed", "resolved"), "Done"),
+    **dict.fromkeys(("inprogress", "in progress", "в работе", "вработе"), "InProgress"),
+    **dict.fromkeys(("todo", "to do", "новая", "к выполнению"), "ToDo"),
+}
+
+
+def to_hours(value: Any) -> float:
+    """Число часов из ячейки: 12.5, "12,5", " 12 ", None, NaN → число (или 0)."""
+    if value is None or isinstance(value, bool):
+        return 0.0
+    if isinstance(value, (int, float)):
+        return float(value) if value == value else 0.0
+    try:
+        return float(str(value).strip().replace(" ", "").replace(",", "."))
+    except ValueError:
+        return 0.0
+
+
+def canonical_status(status: Any) -> tuple[str | None, bool]:
+    """(статус, распознан ли) — синонимы «Выполнено»/«Готово»/«Closed» → Done и т. п."""
+    if status is None or not str(status).strip():
+        return None, True
+    key = " ".join(str(status).split()).casefold()
+    if key in _CANCELLED:
+        return "Cancelled", True
+    if key in _DEFERRED:
+        return "Deferred", True
+    if key in _STATUS_SYNONYMS:
+        return _STATUS_SYNONYMS[key], True
+    return None, False
+
+
+def _canonical_roles(hours: dict[str, Any], reference: dict[str, Any]) -> dict[str, float]:
+    """Приводит названия ролей к написанию из сметы задачи («Девопс» → «ДевОпс»)."""
+    names = {normalize_role(r): r for r in (reference if isinstance(reference, dict) else {})}
+    result: dict[str, float] = {}
+    for role, value in hours.items():
+        name = names.get(normalize_role(role), role)
+        result[name] = result.get(name, 0.0) + to_hours(value)
+    return result
+
+
+def humanize_roles(text: str, tasks: list[dict[str, Any]]) -> str:
+    """Заменяет служебные ключи ролей («руководительпроекта») их названиями из сметы."""
+    if not text:
+        return text
+    names: dict[str, str] = {}
+    for task in tasks:
+        for role in (field(task, "estimated_hh", default={}) or {}):
+            names.setdefault(normalize_role(role), role)
+    for key in sorted(names, key=len, reverse=True):
+        if key in text and key != names[key]:
+            text = text.replace(key, names[key])
+    return text
 
 
 def _estimated_total(task: Any) -> float:
@@ -129,7 +191,7 @@ def prepare_tasks(
     """
     by_task: dict[str, dict[str, float]] = {}
     for row in estimates:
-        hours = float(row.get("hours") or 0)
+        hours = to_hours(row.get("hours"))
         if hours > 0 and normalize_role(row.get("role", "")) != _TOTAL_ROW:
             roles = by_task.setdefault(str(row.get("task_id")), {})
             roles[row["role"]] = roles.get(row["role"], 0.0) + hours
@@ -137,9 +199,9 @@ def prepare_tasks(
     spent_by_task: dict[str, dict[str, float]] = {}
     for row in spent_rows or []:
         spent_by_task[str(row.get("task_id"))] = {
-            role: float(hours)
+            role: to_hours(hours)
             for role, hours in row.items()
-            if normalize_role(role) not in _SERVICE_COLUMNS and hours
+            if normalize_role(role) not in _SERVICE_COLUMNS and to_hours(hours) > 0
         }
 
     prepared = []
@@ -164,9 +226,25 @@ def _tail_input(task: dict[str, Any]) -> dict[str, Any]:
     left = remaining_hh(task)
     item["estimated_hh"] = {name: hours for name, hours in left.values()}
     total = _estimated_total(task)
+    # Полная смета — чтобы доля ролей без людей считалась от всей задачи, а не от остатка.
+    item["estimate_total_hh"] = total
+    # Место в очереди прошлого плана: при пересчёте взятые обязательства не
+    # перетасовываются, новые задачи заполняют оставшуюся ёмкость.
+    rank = (task.get("reason_facts") or {}).get("rank") if is_included(task) else None
+    if rank:
+        item["plan_rank"] = rank
     if total > 0:
+        # SP списываются только на часы, которые реально выполняются: без ролей,
+        # вынесенных в дефицит (частичная цель). Иначе ставка SP за час при
+        # каждом пересчёте росла бы и план «уплывал» даже без отклонений.
+        unstaffed = {normalize_role(r) for r in task.get("unstaffed_hh") or {}}
+        estimate = {normalize_role(r): to_hours(h) for r, h in (task.get("estimated_hh") or {}).items()}
+        work_total = total - sum(h for k, h in estimate.items() if k in unstaffed)
+        work_left = sum(h for k, (_, h) in left.items() if k not in unstaffed)
+        if work_total <= 0:
+            work_total, work_left = total, sum(h for _, h in left.values())
         sp = float(task.get("estimation_sp") or 0)
-        item["estimation_sp"] = round(sp * sum(h for _, h in left.values()) / total, 2)
+        item["estimation_sp"] = round(sp * work_left / work_total, 4)
     return item
 
 
@@ -218,23 +296,57 @@ def plan_tasks(
             for key in PLANNING_FIELDS:
                 if key in planned[tid] or key in merged:
                     merged[key] = copy.deepcopy(planned[tid].get(key))
+            if merged.get("reason_detail"):
+                merged["reason_detail"] = humanize_roles(merged["reason_detail"], tasks)
         merged_tasks.append(merged)
     return merged_tasks
 
 
-def _apply_task_fact(task: dict[str, Any], fact: dict[str, Any], sprint: int) -> None:
-    spent = dict(task.get("spent_hh") or {})
-    for role, hours in (fact.get("spent_hh") or {}).items():
-        spent[role] = spent.get(role, 0.0) + float(hours or 0)
+def close_quarter(tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """После 6-го спринта планировать некуда: незакрытые задачи переходят в
+    следующий квартал с честной причиной (а не «ждёт смежную команду»)."""
+    closed = []
+    for task in tasks:
+        item = copy.deepcopy(task)
+        if not is_done(item) and not is_cancelled(item) and not is_deferred(item) and is_included(item):
+            estimated = _estimated_total(item)
+            spent = sum(to_hours(h) for h in (item.get("spent_hh") or {}).values())
+            share = f" Выполнено {min(spent / estimated, 1):.0%}." if estimated and spent else ""
+            item.update({k: None for k in PLANNING_FIELDS})
+            item.update(R.make_reason(
+                R.ReasonCode.PLAN_EXCEEDED,
+                f"Квартал завершён, {task_id(item)} не закрыта.{share} Остаток переходит в следующий квартал.",
+                decision="postponed",
+                target=R.TargetOption.FUNC_PARTIAL if spent else R.TargetOption.NOT_IN_QUARTER,
+                facts={"task_id": task_id(item), "carry_over": True},
+            ).to_dict())
+        closed.append(item)
+    return closed
+
+
+def _apply_task_fact(task: dict[str, Any], fact: dict[str, Any], sprint: int) -> list[str]:
+    warnings: list[str] = []
+    tid = task_id(task)
+    if fact.get("estimated_hh"):
+        new_estimate = fact["estimated_hh"]
+        if isinstance(new_estimate, dict):
+            task.setdefault("estimated_hh_initial", copy.deepcopy(task.get("estimated_hh") or {}))
+            task["estimated_hh"] = {role: to_hours(h) for role, h in new_estimate.items()}
+            task["reestimated_sprint"] = sprint
+        else:
+            warnings.append(f"Переоценка {tid} пропущена: смета должна быть по ролям (роль: часы).")
+
+    reference = task.get("estimated_hh") or {}
+    spent = _canonical_roles(task.get("spent_hh") or {}, reference)
+    for role, hours in _canonical_roles(fact.get("spent_hh") or {}, reference).items():
+        spent[role] = spent.get(role, 0.0) + hours
     task["spent_hh"] = spent
 
-    if fact.get("estimated_hh"):
-        task.setdefault("estimated_hh_initial", copy.deepcopy(task.get("estimated_hh") or {}))
-        task["estimated_hh"] = {role: float(h) for role, h in fact["estimated_hh"].items()}
-        task["reestimated_sprint"] = sprint
-
-    status = fact.get("status")
-    if status and str(status).casefold() in _DEFERRED:
+    status, known = canonical_status(fact.get("status"))
+    if not known:
+        warnings.append(f"Статус «{fact.get('status')}» у {tid} не распознан — статус не изменён "
+                        f"(допустимо: Done, InProgress, ToDo, Cancelled, Deferred).")
+    if status == "Deferred":
         fact = {**fact, "defer": True}
         status = None
     if fact.get("defer") is True:
@@ -258,6 +370,7 @@ def _apply_task_fact(task: dict[str, Any], fact: dict[str, Any], sprint: int) ->
         }
     if task.get("actual_start_sprint") is None and (is_done(task) or fact.get("spent_hh")):
         task["actual_start_sprint"] = sprint
+    return warnings
 
 
 def _changes(
@@ -350,13 +463,22 @@ def active_resources(
     capacity: dict[str, Any],
     unavailable: set[str],
     hired: dict[str, dict[str, Any]],
+    first_sprint: int = 1,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Инженеры и ёмкость с учётом ушедших/отсутствующих и нанятых."""
-    active = [e for e in [*engineers, *hired.values()] if e.get("engineer_id") not in unavailable]
+    """Инженеры и ёмкость с учётом ушедших/отсутствующих и нанятых.
+
+    Недоступный инженер остаётся в списке с нулевой ставкой: иначе и
+    планировщик, и алерты решили бы, что роли «нет в компании», хотя человек
+    есть, просто сейчас недоступен. Нанятый выходит на полную продуктивность
+    не сразу (ONBOARDING_RAMP): его ёмкость — средняя на спринтах first_sprint…6.
+    """
+    active = [dict(e, capacity_rate=0.0, unavailable=True) if e.get("engineer_id") in unavailable else e
+              for e in [*engineers, *hired.values()]]
     active_capacity = copy.deepcopy(capacity)
     engineer_hh = active_capacity.setdefault("engineer_hh", {})
     for eng_id, eng in hired.items():
-        engineer_hh[eng_id] = SPRINT_HOURS * float(eng.get("capacity_rate") or 1.0)
+        ramp = average_ramp(int(eng.get("joined_sprint") or first_sprint), first_sprint)
+        engineer_hh[eng_id] = round(SPRINT_HOURS * float(eng.get("capacity_rate") or 1.0) * ramp, 1)
     for eng_id in unavailable:
         engineer_hh[eng_id] = 0.0
     return active, active_capacity
@@ -395,6 +517,18 @@ def apply_sprint_fact(
     previous = copy.deepcopy(plan["current"])
     tasks = {task_id(t): copy.deepcopy(t) for t in plan["current"]}
     warnings: list[str] = []
+    for new_task in fact.get("tasks_added") or []:
+        tid = task_id(new_task)
+        if not tid or tid in tasks:
+            warnings.append(f"Новая задача {tid or 'без id'} пропущена: пустой или повторяющийся id.")
+            continue
+        item = {"status": "ToDo", "spent_hh": {}, "estimated_hh": {}, **copy.deepcopy(new_task)}
+        if not isinstance(item["estimated_hh"], dict):
+            warnings.append(f"У новой задачи {tid} смета не по ролям — задача помечена «Не оценивалась».")
+            item["estimated_hh"] = {}
+        item["added_sprint"] = sprint
+        tasks[tid] = item
+
     for tid, task_fact in (fact.get("tasks") or {}).items():
         task = tasks.get(tid)
         if task is None:
@@ -402,26 +536,22 @@ def apply_sprint_fact(
         elif is_done(task) or is_cancelled(task):
             warnings.append(f"Факт по {tid} пропущен: задача уже закрыта или отменена.")
         else:
-            _apply_task_fact(task, task_fact, sprint)
-
-    for new_task in fact.get("tasks_added") or []:
-        tid = task_id(new_task)
-        if not tid or tid in tasks:
-            warnings.append(f"Новая задача {tid or '<без id>'} пропущена: пустой или повторяющийся id.")
-            continue
-        item = {"status": "ToDo", "spent_hh": {}, "estimated_hh": {}, **copy.deepcopy(new_task)}
-        item["added_sprint"] = sprint
-        tasks[tid] = item
+            warnings.extend(_apply_task_fact(task, task_fact, sprint))
 
     unavailable = (set(plan.get("engineers_unavailable") or []) | set(fact.get("engineers_unavailable") or [])) \
         - set(fact.get("engineers_returned") or [])
     hired = {e["engineer_id"]: dict(e) for e in plan.get("engineers_hired") or []}
     for eng in fact.get("engineers_hired") or []:
-        hired.setdefault(eng["engineer_id"], dict(eng))
-    active_engineers, active_capacity = active_resources(engineers, capacity, unavailable, hired)
+        hired.setdefault(eng["engineer_id"], {"joined_sprint": sprint + 1, **eng})
+    active_engineers, active_capacity = active_resources(
+        engineers, capacity, unavailable, hired, first_sprint=sprint + 1
+    )
 
-    current = plan_tasks(list(tasks.values()), active_capacity, dependencies, active_engineers,
-                         planner=planner, start_sprint=sprint + 1)
+    if sprint >= QUARTER_SPRINTS:
+        current = close_quarter(list(tasks.values()))
+    else:
+        current = plan_tasks(list(tasks.values()), active_capacity, dependencies, active_engineers,
+                             planner=planner, start_sprint=sprint + 1)
 
     plan["current"] = current
     plan["current_sprint"] = sprint

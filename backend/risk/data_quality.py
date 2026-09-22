@@ -16,6 +16,13 @@ from backend.risk.alerts import Alert
 TOTAL_ROW = normalize_role("Итого по ролям")
 
 
+def _hours(value: Any) -> float:
+    try:
+        return float(str(value).replace(",", ".")) if value not in (None, "") else 0.0
+    except ValueError:
+        return 0.0
+
+
 def _info(tid: str, prodf: str, description: str, recommendation: str,
           affected: Iterable[str] = ()) -> Alert:
     return Alert(
@@ -28,6 +35,29 @@ def _info(tid: str, prodf: str, description: str, recommendation: str,
         recommendation=recommendation,
         affected_task_ids=tuple(affected) or (tid,),
     )
+
+
+def _cycles(edges: set[tuple[str, str]]) -> list[list[str]]:
+    """Простые циклы графа зависимостей (включая самоссылки), каждый — один раз."""
+    graph: dict[str, list[str]] = defaultdict(list)
+    for a, b in sorted(edges):
+        graph[a].append(b)
+    found: list[list[str]] = []
+    seen: set[frozenset[str]] = set()
+
+    def walk(start: str, node: str, path: list[str]) -> None:
+        for nxt in graph.get(node, []):
+            if nxt == start:
+                key = frozenset(path)
+                if key not in seen:
+                    seen.add(key)
+                    found.append(list(path))
+            elif nxt not in path and nxt > start:
+                walk(start, nxt, [*path, nxt])
+
+    for start in sorted(graph):
+        walk(start, start, [start])
+    return found
 
 
 def check_data_quality(
@@ -81,10 +111,13 @@ def check_data_quality(
     def prodf_of(*ids: str) -> str:
         return next((prodf_id(by_id[i]) for i in ids if i in by_id), "")
 
+    ghost_pairs: set[tuple[str, str]] = set()
     for dep in dependencies:
         a, b = dep.get("blocking_task_id"), dep.get("blocked_task_id")
         ghosts = [x for x in (a, b) if x not in by_id]
-        if ghosts:
+        if ghosts and (a, b) not in ghost_pairs:
+            # Повтор той же связи — это отдельная находка «дубль», ниже.
+            ghost_pairs.add((a, b))
             alerts.append(_info(
                 a, prodf_of(a, b),
                 f"Связь {a} → {b} ({dep.get('dependency_type', '—')}) ссылается на "
@@ -94,6 +127,17 @@ def check_data_quality(
                 "Уточнить у владельца данных, существует ли задача, и поправить Task_dependencies.",
                 affected=(a, b),
             ))
+
+    known = {(d.get("blocking_task_id"), d.get("blocked_task_id")) for d in dependencies
+             if d.get("blocking_task_id") in by_id and d.get("blocked_task_id") in by_id}
+    for cycle in _cycles(known):
+        alerts.append(_info(
+            cycle[0], prodf_of(*cycle),
+            ("Задача ссылается сама на себя: " if len(cycle) == 1 else "Цикл зависимостей: ")
+            + " → ".join([*cycle, cycle[0]]) + ". Такие задачи никогда не смогут начаться.",
+            "Разорвать цикл в Task_dependencies (уточнить у владельца данных, какая связь лишняя).",
+            affected=cycle,
+        ))
 
     pairs = Counter((d.get("blocking_task_id"), d.get("blocked_task_id")) for d in dependencies)
     for (a, b), count in pairs.items():
@@ -110,7 +154,7 @@ def check_data_quality(
     calc: dict[str, float] = defaultdict(float)
     for row in estimates:
         if normalize_role(row.get("role", "")) != TOTAL_ROW:
-            calc[str(row.get("task_id"))] += float(row.get("hours") or 0)
+            calc[str(row.get("task_id"))] += _hours(row.get("hours"))
 
     for tid in sorted(set(calc) - set(by_id)):
         alerts.append(_info(
@@ -135,7 +179,7 @@ def check_data_quality(
         if abs(float(declared) - calc[tid]) > 0.01:
             alerts.append(_info(
                 tid, prodf_id(task),
-                f"estimated_hh в Tasks = {float(declared):g} ч, а сумма калькулятора сметы "
+                f"{tid}: estimated_hh в Tasks = {float(declared):g} ч, а сумма калькулятора сметы "
                 f"по ролям = {calc[tid]:g} ч. Значение в Tasks некорректно.",
                 f"Перезаполнить estimated_hh значением калькулятора ({calc[tid]:g} ч) — "
                 f"калькулятор является целевой сметой.",

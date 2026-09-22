@@ -34,21 +34,26 @@ def _t(tid, team, decision="included", start=1, end=1, hh=None, status="ToDo", *
 # --- рекомендации со свободной ёмкостью ---------------------------------------
 
 
-def test_orange_recommends_concrete_engineer_with_free_hours():
+def test_orange_resource_compares_demand_with_whole_company_fund():
     current = [
-        _t("DB-202", "Team-Platform", hh={"Разработчик Java": 100}),
-        _t("MP-102", "Team-K", hh={"Разработчик Java": 60},
-           allocation={1: {"ENG-414": 60}}),
+        _t("DB-202", "Team-Platform", hh={"Разработчик Java": 200}),
+        _t("MP-102", "Team-K", hh={"Разработчик Java": 60}),
     ]
     engineers = [
         {"engineer_id": "ENG-414", "team_id": "Team-K", "role": "Разработчик Java", "capacity_rate": "1.0"},
         {"engineer_id": "ENG-424", "team_id": "Team-Alpha", "role": "Разработчик Java", "capacity_rate": "1.0"},
     ]
-    plan = save_baseline({"current": current})
-    alert = next(a for a in check_resource_deficit(plan, engineers) if a.team_id == "Team-Platform")
-    assert alert.category == "resource"
-    assert "ENG-424 из Team-Alpha (свободно 80 ч)" in alert.recommendation
-    assert "ENG-414 из Team-K (свободно 20 ч)" in alert.recommendation
+    [alert] = check_resource_deficit(save_baseline({"current": current}), engineers)
+    assert (alert.category, alert.team_id, alert.deficit_hh) == ("resource", "Team-Platform", 100)
+    assert "Team-Platform 200 ч, Team-K 60 ч" in alert.description
+    assert "фонд всех сотрудников этой роли в компании — 160 ч" in alert.description
+
+
+def test_no_resource_alert_when_company_pool_covers_demand():
+    current = [_t("MOB-7013", "Team-L", hh={"Разработчик Android": 30})]
+    engineers = [{"engineer_id": "ENG-417", "team_id": "Team-Platform", "role": "Разработчик Android",
+                  "capacity_rate": "1.0"}]
+    assert check_resource_deficit(save_baseline({"current": current}), engineers) == []
 
 
 def test_missing_role_alert_is_hiring_category():
@@ -88,6 +93,13 @@ def test_recalc_marks_alert_lifecycle_across_sprints():
     assert yellow and yellow[0].status == "new"
     done = {"tasks": {"A": {"status": "Done", "spent_hh": {"Разработчик Java": 70}}}}
     apply_sprint_fact(plan, done, dependencies=DEPS, engineers=ENGINEERS, capacity=CAPACITY,
+                      planner=fake_planner)
+    # A закрыта с опозданием, но B и C всё ещё позже baseline — сдвиг цепочки не исчез.
+    [still] = [a for a in plan["alerts"] if a.type == "yellow"]
+    assert still.status == "ongoing" and "закрыта с опозданием" in still.description
+    # Когда цепочка догнала/закрылась, алерт решается.
+    rest = {"tasks": {t: {"status": "Done", "spent_hh": {"Разработчик Java": 80}} for t in ("B", "C")}}
+    apply_sprint_fact(plan, rest, dependencies=DEPS, engineers=ENGINEERS, capacity=CAPACITY,
                       planner=fake_planner)
     assert any(r["category"] == "cascade" for r in plan["resolved_alerts"])
 
@@ -166,8 +178,9 @@ def test_hire_role_picks_role_with_most_postponed_hours_and_planner_gets_enginee
 
     apply_sprint_fact(plan, fact, dependencies=[], engineers=[], capacity={"engineer_hh": {}}, planner=spy)
     assert [e["engineer_id"] for e in seen["engineers"]] == [hire["engineer_id"]]
-    assert seen["capacity"]["engineer_hh"][hire["engineer_id"]] == 80.0
-    assert plan["engineers_hired"] == [hire]
+    # выходит во 2-м спринте: 50 % → 75 % → 100 % ×3, в среднем 68 ч за спринт
+    assert seen["capacity"]["engineer_hh"][hire["engineer_id"]] == 68.0
+    assert plan["engineers_hired"] == [{**hire, "joined_sprint": 2}]
 
 
 def test_manual_target_overrides_auto_pick():

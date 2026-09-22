@@ -16,6 +16,29 @@ SPRINT_DAYS = 14
 HIRE_LEAD_SPRINTS = 3     # поиск и выход нового сотрудника ≈ 6 недель
 BORROW_LEAD_SPRINTS = 1   # передача дел и переключение из другой команды ≈ 2 недели
 
+# Продуктивность по спринтам с момента выхода; дальше — 100 %.
+ONBOARDING_RAMP = (0.5, 0.75)   # новый сотрудник: адаптация, доступы, вход в код
+BORROW_RAMP = (0.75,)           # переключённый из другой команды: вход в контекст
+
+
+def ramp_factor(sprints_since_join: int, ramp: tuple[float, ...]) -> float:
+    return ramp[sprints_since_join] if 0 <= sprints_since_join < len(ramp) else 1.0
+
+
+def average_ramp(joined: int, first: int, last: int = QUARTER_SPRINTS,
+                 ramp: tuple[float, ...] = ONBOARDING_RAMP) -> float:
+    """Средняя продуктивность человека, вышедшего в спринте joined, на спринтах first…last.
+
+    Планировщик принимает одну ёмкость инженера на все спринты, поэтому новичку
+    даётся средняя по оставшемуся горизонту: суммарные часы считаются точно,
+    а следующий пересчёт уточняет распределение.
+    """
+    sprints = range(max(first, joined), last + 1)
+    if not sprints:
+        return 1.0
+    total = sum(ramp_factor(s - joined, ramp) for s in sprints)
+    return total / (last - first + 1) if last >= first else 1.0
+
 
 def sprint_dates(n: int, start: date = QUARTER_START) -> tuple[date, date]:
     first = start + timedelta(days=(n - 1) * SPRINT_DAYS)

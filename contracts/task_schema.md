@@ -12,10 +12,11 @@
 | parent_id       | str \| None                            | Идентификатор родительской задачи/PRODF-цели                          |
 | prodf_id        | str                                    | Идентификатор PRODF-цели, к которой относится задача                  |
 | team_id         | str                                    | Идентификатор команды-исполнителя                                     |
-| status          | str                                    | Todo / InProgress / Done (на момент среза)                            |
-| rung            | str                                    | Уровень иерархии (эпик/фича/задача — согласно датасету)                |
+| status          | str                                    | ToDo / InProgress / Done (так в датасете; синонимы распознаются)      |
+| rung            | int                                    | Ранг инициативы 65–95: чем выше, тем раньше задача в очереди          |
 | estimation_sp   | float                                  | Оценка в Story Points                                                 |
-| estimated_hh    | dict[str, float]                       | Оценка в человеко-часах по ролям, напр. `{"backend": 40, "qa": 8}`     |
+| estimated_hh    | dict[str, float]                       | Часы по ролям из калькулятора сметы (целевая смета), напр. `{"Аналитик": 40}` |
+| spent_hh        | dict[str, float]                       | Факт по ролям (Spent_time_roles + факты спринтов)                     |
 
 ## PlannedTask (расширяет Task)
 
@@ -23,15 +24,23 @@
 
 | Поле            | Тип                                   | Описание                                                              |
 |-----------------|-----------------------------------------|--------------------------------------------------------------------|
-| planned_start   | int                                     | Номер спринта начала (план)                                        |
-| planned_end     | int                                     | Номер спринта окончания (план)                                     |
-| actual_start    | int \| None                             | Номер спринта фактического начала                                   |
-| actual_end      | int \| None                             | Номер спринта фактического окончания                                |
+| planned_start_sprint | int \| None                       | Номер спринта начала (поля без `_sprint` в датасете — старые даты)   |
+| planned_end_sprint   | int \| None                       | Номер спринта окончания по плану                                    |
+| forecast_end_sprint  | int \| None                       | Прогноз окончания после пересчёта                                   |
+| actual_end_sprint    | int \| None                       | Спринт, в котором задача закрыта (факт)                             |
+| allocation      | dict[int, dict[str, float]]             | Спринт → {инженер: часы}                                            |
+| assigned_engineers | list[str]                            | Инженеры задачи                                                     |
+| sp_by_sprint    | dict[int, float]                        | SP, списанные в каждый спринт (пропорционально часам)                |
+| unstaffed_hh    | dict[str, float]                        | Часы ролей, вынесенные в дефицит: роли нет в компании или её часы заняты (частичная цель) |
+| target_label    | str \| None                             | Текст цели из справочника                                           |
+| reason_label    | str                                     | Текст причины из справочника                                        |
+| recommendation  | str \| None                             | Что можно сделать (ответ экспертов п. 4)                            |
+| score           | float                                   | Скоринг: rung × (1 + 0.5 × число блокируемых задач)                 |
 | sprint_number   | int                                     | Спринт, к которому относится текущий срез строки плана               |
 | decision        | Literal["included", "postponed", "cancelled"] | Решение планировщика по задаче                              |
 | reason_code     | ReasonCode \| InclusionCode             | Код причины решения (см. `backend/explainability/reasons.py`)       |
 | reason_detail   | str                                     | Человекочитаемое пояснение причины (с цифрами)                       |
-| target_option   | TargetOption \| None                    | Итог разработки из справочника «Варианты выбора цели»                |
+| target_option   | TargetOption                            | Итог разработки из справочника «Варианты выбора цели»: у включённой — `PRODUCTION` или частичная цель (`READY_FOR_IT`, `FUNC_PARTIAL`), у перенесённой — `NOT_IN_QUARTER` |
 | reason_facts    | dict                                    | Числа, на которых основано решение (нужно/доступно ч, SP, блокер…)   |
 
 ## Примечания
@@ -85,3 +94,20 @@ s.quarter_at_risk   # True — прогноз за пределами 6-го с�
 
 Строковые значения из Excel переводятся в коды через `from_label`:
 `R.ReasonCode.from_label("Отсутствие ресурсов")`, `R.TargetOption.from_label("не будет взято в квартал")`.
+
+## Частичная цель (роли без людей)
+
+`R.partial_target(missing_roles)`: нет только руководителя/поддержки → `READY_FOR_IT`
+(«4. Функционал реализован и готов к ИТ»); иначе → `FUNC_PARTIAL`
+(«3. Функционал реализован частично»). Шаблоны:
+
+```python
+r = R.included_partial("SRV-4011", "Team-Alpha", 1, 1, {"Руководитель проекта": 20}, 115,
+                       busy={"ДевОпс": 10})        # busy — роль есть, но её часы заняты
+r = R.role_absent("ANL-3042", {"Разработчик 1С": 50}, total_hh=90)   # > 50% сметы — перенос
+r = R.dependency_cycle("C1", ["C1", "C2", "C1"])
+r = R.unknown_team("T1", "Team-Z")
+```
+
+`make_reason` запрещает `NO_RESOURCES` для `cancelled` (нет ресурсов — это перенос) и
+ставит `PRODUCTION` включённой задаче без явной цели.

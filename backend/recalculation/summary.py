@@ -30,9 +30,14 @@ from backend.risk.alerts import work_progress
 def _outcome(task: Any, final: bool) -> dict[str, Any]:
     tid = task_id(task)
     progress = work_progress(task)
+    target = field(task, "target_label", default=None)
+    partial = bool(field(task, "unstaffed_hh", default=None))
     if is_done(task):
+        detail = f"закрыта в {sprint_label(field(task, 'actual_end_sprint'))}"
+        if partial and target:
+            detail += f" с частичной целью «{target}»"
         return {"task_id": tid, "outcome": "done", "label": ClosingResult.ACHIEVED.label,
-                "detail": f"закрыта в {sprint_label(field(task, 'actual_end_sprint'))}"}
+                "detail": detail, "partial": partial}
     if is_cancelled(task):
         return {"task_id": tid, "outcome": "cancelled", "label": TargetOption.CANCELLED_BY_CUSTOMER.label,
                 "detail": field(task, "reason_detail", default="") or "отменена"}
@@ -42,8 +47,10 @@ def _outcome(task: Any, final: bool) -> dict[str, Any]:
                 "detail": field(task, "reason_detail", default="") or "перенесена в следующий квартал"}
     end = end_sprint(task)
     if not final and is_included(task) and end is not None and end <= QUARTER_SPRINTS:
-        return {"task_id": tid, "outcome": "on_plan", "label": "в плане квартала",
-                "detail": f"прогноз окончания — {sprint_label(end)}"}
+        return {"task_id": tid, "outcome": "on_plan", "label": target or "в плане квартала",
+                "detail": f"прогноз окончания — {sprint_label(end)}"
+                          + (" (частичная цель: часть ролей без людей)" if partial else ""),
+                "partial": partial}
     if progress > 0:
         return {"task_id": tid, "outcome": "carry_over", "label": TargetOption.FUNC_PARTIAL.label,
                 "detail": f"выполнено {progress:.0%}, остаток переходит в следующий квартал"}
@@ -60,21 +67,31 @@ def quarter_summary(plan: dict[str, Any]) -> dict[str, Any]:
 
     counts: dict[str, int] = defaultdict(int)
     initiatives: dict[str, dict[str, list[str]]] = defaultdict(lambda: defaultdict(list))
+    partial_by_prodf: dict[str, list[str]] = defaultdict(list)
     for row in rows:
         counts[row["outcome"]] += 1
         initiatives[prodf_id(by_task[row["task_id"]])][row["outcome"]].append(row["task_id"])
+        if row.get("partial"):
+            partial_by_prodf[prodf_id(by_task[row["task_id"]])].append(row["task_id"])
 
     prodf_rows = []
     for prodf, groups in sorted(initiatives.items()):
-        total = sum(len(v) for v in groups.values())
+        # Отменённое заказчиком — не часть цели: инициатива может быть выполнена без него.
+        total = sum(len(v) for k, v in groups.items() if k != "cancelled")
         finished = len(groups.get("done", [])) + (0 if final else len(groups.get("on_plan", [])))
-        if finished == total:
+        if total == 0:
+            status = "отменена"
+        elif finished == total and partial_by_prodf.get(prodf):
+            status = ("выполнена с частичной целью" if final
+                      else "укладывается в квартал с частичной целью")
+        elif finished == total:
             status = "выполнена" if final else "укладывается в квартал"
         elif finished or groups.get("carry_over"):
             status = "частично"
         else:
             status = "не в квартале"
         prodf_rows.append({"prodf_id": prodf, "status": status, "tasks": dict(groups),
+                           "partial_tasks": sorted(partial_by_prodf.get(prodf, [])),
                            "done_share": round(finished / total, 2) if total else 0.0})
     return {
         "mode": "final" if final else "forecast",

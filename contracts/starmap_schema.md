@@ -72,3 +72,16 @@ from backend.starmap.bus_factor import starmap_summary
 data = starmap_summary(plan, engineers_profiles, estimates)
 render_star_map_view(data)
 ```
+
+## Дополнительные ключи `starmap_summary`
+
+| Ключ                   | Для чего                                                               |
+|------------------------|------------------------------------------------------------------------|
+| team_bus_factor        | `{команда: {rows, risks, headline}}` — Bus Factor внутри команды (эксперты п. 9). Строка: `competency`, `level` (role/tech), `hours`, `tasks`, `in_team`, `elsewhere`, `bus_factor`, `status` (`missing` / `borrowed` / `single` / `ok`), `status_label` |
+| recommendations.hire   | Роли без носителей: `role`, `hours`, `tasks`, `teams`, `train_instead`, `headline` |
+| recommendations.train  | Кого обучить для ролей с Bus Factor = 1: `role`, `owner_id`, `candidate` (`engineer_id`, `why`, `overlap`), `alternatives`, `headline` |
+| single_points_grouped  | Одиночки, сгруппированные по носителю: «Разработчик .net (ENG-420)» → [C#, .NET Core] |
+
+`absence_impact[engineer]` дополнительно содержит `hours_at_risk`, `postponed_tasks` и
+`backup_candidates`; `sole_competencies` — только компетенции, нужные плану.
+Функции — `backend/starmap/recommendations.py`.

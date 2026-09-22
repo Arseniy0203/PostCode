@@ -46,6 +46,36 @@ Mode = Literal["fact", "forecast"]
 #              (обещание бизнесу: цель достигнута целиком или нет).
 Scope = Literal["committed", "initiative"]
 
+# Статус метрики для UI и алертов. Значение value остаётся числом (0.0 без данных),
+# а по статусу видно, можно ли его сравнивать с нормой:
+#   ok / out_of_norm — есть что сравнивать;
+#   no_data — знаменатель пуст (на спринт ничего не планировалось, план пуст);
+#   future  — спринт ещё не наступил, факта быть не может.
+STATUS_LABELS = {
+    "ok": "в норме",
+    "out_of_norm": "вне нормы",
+    "no_data": "нет данных",
+    "future": "спринт ещё не наступил",
+}
+
+
+def _status(value: float, norm: tuple[float, float], has_data: bool) -> str:
+    if not has_data:
+        return "no_data"
+    return "ok" if norm[0] <= value <= norm[1] else "out_of_norm"
+
+
+def _cancelled(task: dict[str, Any] | None) -> bool:
+    """Отменена заказчиком: цель сняли, а не провалили.
+
+    Знаменатель PI по формуле условия зафиксирован на Неделе 0, поэтому такие
+    инициативы остаются в нём, но выводятся отдельным списком cancelled_prodf.
+    """
+    if task is None or is_done(task):
+        return False
+    status = str(task["status"] or "").strip().casefold()
+    return task["decision"] == "cancelled" or status in ("cancelled", "canceled", "отменена")
+
 
 def _collapse(rows: Iterable[Any]) -> dict[str, dict[str, Any]]:
     """task_id -> сводная запись задачи (строки-срезы одной задачи схлопываются).
@@ -126,25 +156,32 @@ def _pi_details(baseline: Any, current: Any, mode: Mode,
         initiative: all_tasks[initiative] for initiative in committed
     }
 
-    completed, not_completed = [], {}
+    completed, not_completed, cancelled = [], {}, []
     for initiative, task_ids in sorted(checked.items()):
+        if all(_cancelled(cur.get(t)) for t in task_ids):
+            cancelled.append(initiative)
         blocking = [t for t in task_ids if not _task_completes(cur.get(t), mode)]
         if blocking:
             not_completed[initiative] = sorted(blocking)
         else:
             completed.append(initiative)
 
-    value = len(completed) / len(committed) * 100 if committed else 0.0
+    denominator = len(committed)
+    value = len(completed) / denominator * 100 if denominator else 0.0
+    status = _status(value, PI_NORM, bool(denominator))
     return {
         "mode": mode,
         "scope": scope,
         "value": value,
         "numerator": len(completed),
-        "denominator": len(committed),
+        "denominator": denominator,
         "completed_prodf": completed,
         "not_completed_prodf": not_completed,
+        "cancelled_prodf": cancelled,
         "baseline_scope": {k: sorted(v) for k, v in sorted(checked.items())},
-        "in_norm": PI_NORM[0] <= value <= PI_NORM[1],
+        "in_norm": status == "ok",
+        "status": status,
+        "status_label": STATUS_LABELS[status],
     }
 
 
@@ -200,7 +237,8 @@ def pi_predictability(
     return _pi_details(baseline, current, mode, scope)["value"]
 
 
-def _say_do_details(baseline: Any, current: Any, sprint_n: int) -> dict[str, Any]:
+def _say_do_details(baseline: Any, current: Any, sprint_n: int,
+                    current_sprint: int | None = None) -> dict[str, Any]:
     planned = [t for t in _collapse(baseline).values()
                if _included(t) and t["planned_end"] == sprint_n]
     done = [t for t in _collapse(current).values()
@@ -208,6 +246,10 @@ def _say_do_details(baseline: Any, current: Any, sprint_n: int) -> dict[str, Any
     planned_sp = sum(t["estimation_sp"] for t in planned)
     done_sp = sum(t["estimation_sp"] for t in done)
     value = done_sp / planned_sp * 100 if planned_sp else 0.0
+    if current_sprint is not None and sprint_n > current_sprint:
+        status = "future"
+    else:
+        status = _status(value, SAY_DO_NORM, bool(planned_sp))
     return {
         "sprint": sprint_n,
         "value": value,
@@ -215,7 +257,9 @@ def _say_do_details(baseline: Any, current: Any, sprint_n: int) -> dict[str, Any
         "planned_sp": planned_sp,
         "done_tasks": sorted(t["task_id"] for t in done),
         "planned_tasks": sorted(t["task_id"] for t in planned),
-        "in_norm": SAY_DO_NORM[0] <= value <= SAY_DO_NORM[1],
+        "in_norm": status == "ok",
+        "status": status,
+        "status_label": STATUS_LABELS[status],
     }
 
 
@@ -244,6 +288,7 @@ def kpi_breakdown(
     baseline: Any,
     current: Any,
     sprints: Iterable[int] = range(1, QUARTER_SPRINTS + 1),
+    current_sprint: int | None = None,
 ) -> dict[str, Any]:
     """Расшифровка KPI: что вошло в числитель и знаменатель каждой метрики.
 
@@ -253,7 +298,9 @@ def kpi_breakdown(
                                   "fact_initiative": {...},
                                   "forecast_initiative": {...}},
             "say_do": [{"sprint", "value", "done_sp", "planned_sp",
-                        "done_tasks", "planned_tasks", "in_norm"}, ...],
+                        "done_tasks", "planned_tasks", "in_norm",
+                        "status", "status_label"}, ...],
+            "current_sprint": номер последнего прошедшего спринта или None,
             "norms": {"pi_predictability": (80, 100), "say_do": (90, 105)},
         }
     """
@@ -265,6 +312,7 @@ def kpi_breakdown(
             "forecast_initiative": _pi_details(
                 baseline, current, "forecast", "initiative"),
         },
-        "say_do": [_say_do_details(baseline, current, n) for n in sprints],
+        "say_do": [_say_do_details(baseline, current, n, current_sprint) for n in sprints],
+        "current_sprint": current_sprint,
         "norms": {"pi_predictability": PI_NORM, "say_do": SAY_DO_NORM},
     }

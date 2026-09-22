@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Iterable
 
 from backend.recalculation.plan_fields import normalize_role
@@ -30,6 +31,8 @@ TECH_ALIASES: dict[str, str] = {
     "java": "Java",
     "core": "Java Core",
     "javacore": "Java Core",
+    "ci/cd": "CI/CD",
+    "gitlabci": "CI/CD",
 }
 
 # Роль -> ключевые технологии. Нужно для правила технологического соответствия
@@ -97,9 +100,14 @@ def tech_key(name: str) -> str:
 
 
 def canonical_tech(name: str) -> str:
-    """Каноническое имя технологии (Apache Kafka и Kafka — одно и то же)."""
+    """Каноническое имя технологии (Apache Kafka и Kafka — одно и то же).
+
+    Уточнение в скобках не делает технологию другой: «CI/CD (GitLab, Jenkins)»,
+    «CI/CD» и «GitLab CI» — один навык CI/CD.
+    """
     cleaned = " ".join(str(name).split())
-    return TECH_ALIASES.get(tech_key(cleaned), cleaned)
+    bare = re.sub(r"\s*\(.*?\)\s*", " ", cleaned).strip() or cleaned
+    return TECH_ALIASES.get(tech_key(bare), TECH_ALIASES.get(tech_key(cleaned), bare))
 
 
 def role_key(name: str) -> str:

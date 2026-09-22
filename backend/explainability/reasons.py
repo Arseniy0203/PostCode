@@ -92,6 +92,10 @@ class InclusionCode(_LabeledEnum):
     UNBLOCKS_CHAIN = ("UNBLOCKS_CHAIN", "Блокирует другие задачи")
     ALREADY_IN_PROGRESS = ("ALREADY_IN_PROGRESS", "Задача уже в работе")
     STRETCHED = ("STRETCHED", "Растянута на несколько спринтов, укладывается в квартал")
+    PARTIAL_TARGET = (
+        "PARTIAL_TARGET",
+        "Частичная цель: специалистов части ролей нет в компании",
+    )
 
 
 class TargetOption(_LabeledEnum):
@@ -131,8 +135,9 @@ class Reason:
     decision — included / postponed / cancelled;
     code     — InclusionCode для included, ReasonCode для postponed/cancelled;
     detail   — человекочитаемый текст с цифрами;
-    target   — итог разработки из справочника (для переноса/отмены);
-    facts    — числа, на которых основано решение (для карточки задачи).
+    target   — итог разработки из справочника «Варианты выбора цели»;
+    facts    — числа, на которых основано решение (для карточки задачи);
+    recommendation — что можно сделать (ответ экспертов п. 4).
     """
 
     decision: Decision
@@ -140,6 +145,7 @@ class Reason:
     detail: str
     target: TargetOption | None = None
     facts: dict[str, Any] = field(default_factory=dict)
+    recommendation: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Поля в формате PlannedTask (см. contracts/task_schema.md)."""
@@ -151,6 +157,7 @@ class Reason:
             "target_option": self.target.value if self.target else None,
             "target_label": self.target.label if self.target else None,
             "reason_facts": dict(self.facts),
+            "recommendation": self.recommendation,
         }
 
 
@@ -172,6 +179,7 @@ def make_reason(
     decision: Decision | None = None,
     target: TargetOption | str | None = None,
     facts: dict[str, Any] | None = None,
+    recommendation: str | None = None,
 ) -> Reason:
     """Конструирует объект причины решения по задаче.
 
@@ -200,11 +208,18 @@ def make_reason(
         raise ValueError(f"Для included нужен InclusionCode, получен {code!r}")
     if decision != "included" and not isinstance(code, ReasonCode):
         raise ValueError(f"Для {decision} нужен ReasonCode, получен {code!r}")
+    if decision == "cancelled" and code is ReasonCode.NO_RESOURCES:
+        # Ответ экспертов п. 4: нет ресурсов — задача переносится, а не отменяется.
+        raise ValueError("Нехватка ресурсов — это перенос (postponed), а не отмена")
     if not detail_text or not detail_text.strip():
         raise ValueError("reason_detail не может быть пустым")
     if isinstance(target, str):
         target = TargetOption.from_label(target)
-    return Reason(decision, code, detail_text.strip(), target, dict(facts or {}))
+    if decision == "included" and target is None:
+        # Включённая задача по умолчанию идёт до полной цели.
+        target = TargetOption.PRODUCTION
+    return Reason(decision, code, detail_text.strip(), target, dict(facts or {}),
+                  (recommendation or "").strip() or None)
 
 
 def validate_decision(decision: str, reason: Reason | None) -> Reason:
@@ -261,8 +276,9 @@ def no_resources(
         )
     else:
         detail = (
-            f"Часы роли «{role}»{where} заняты другими задачами: "
-            f"нужно {_fmt(need_hh)} ч, свободно {_fmt(available_hh)} ч."
+            f"Свободные часы роли «{role}»{where} ({_fmt(available_hh)} ч при нужных "
+            f"{_fmt(need_hh)} ч) приходятся на спринты, где задачу уже не успеть "
+            f"закончить: раньше их заняли задачи с более высоким приоритетом."
         )
     facts = {"task_id": task_id, "role": role, "need_hh": need_hh,
              "available_hh": available_hh, "deficit_hh": max(deficit, 0.0),
@@ -446,6 +462,11 @@ def included_stretched(
     end_sprint: int,
 ) -> Reason:
     """Задача растянута на несколько спринтов из-за лимита часов роли."""
+    if end_sprint <= start_sprint:
+        raise ValueError(
+            f"{task_id}: растянутая задача должна занимать больше одного спринта "
+            f"({start_sprint}–{end_sprint})"
+        )
     sprints = end_sprint - start_sprint + 1
     detail = (
         f"Растянута на {sprints} {_sprints_word(sprints)} ({start_sprint}–{end_sprint}): "
@@ -518,6 +539,12 @@ def explain_shift(
     """
     if not cause_task_id and not (cause_text and cause_text.strip()):
         raise ValueError("Нужно указать cause_task_id или cause_text")
+    if old_sprint is None:
+        at_risk = new_sprint > quarter_sprints
+        detail = (f"{task_id} вошла в план: срок — спринт {new_sprint}"
+                  + (f" ({cause_text.strip()})." if cause_text else "."))
+        return ShiftReason(task_id, prodf_id, new_sprint, new_sprint, detail,
+                           cause_task_id, cause_text, at_risk)
     if new_sprint == old_sprint:
         raise ValueError(
             f"{task_id}: сдвига нет, спринт окончания не изменился ({old_sprint})"
@@ -526,7 +553,9 @@ def explain_shift(
     sign = f"+{delta}" if delta > 0 else str(delta)
     parts = [f"Срок {task_id} сдвинулся со спринта {old_sprint} на {new_sprint} ({sign})"]
     causes = []
-    if cause_task_id:
+    if cause_task_id and delta < 0:
+        causes.append(f"задача {cause_task_id}, от которой она зависит, закрыта раньше срока")
+    elif cause_task_id:
         causes.append(f"задача {cause_task_id}, от которой она зависит, не завершена в срок")
     if cause_text:
         causes.append(cause_text.strip())
@@ -541,3 +570,129 @@ def explain_shift(
         parts.append(f" Инициатива {prodf_id} пока укладывается в квартал.")
     return ShiftReason(task_id, prodf_id, old_sprint, new_sprint, "".join(parts),
                        cause_task_id, cause_text, at_risk)
+
+
+# --- Шаблоны: роли без людей, частичная цель, циклы ----------------------------
+
+# Роли, без которых функционал можно сделать, но нельзя довести до эксплуатации.
+_ROLLOUT_PREFIXES = ("руководитель", "специалистподдержки")
+
+
+def _role_key(role: str) -> str:
+    return "".join(str(role).split()).casefold().replace("-", "").replace("_", "")
+
+
+def partial_target(missing_roles: list[str]) -> TargetOption:
+    """Какую цель из «Вариантов выбора цели» можно обещать без ролей missing_roles.
+
+    Нет только руководителя/поддержки — функционал делаем, но передать его в
+    эксплуатацию некому: «4. Функционал реализован и готов к ИТ». Нет
+    специалистов, которые делают сам функционал (аналитик, разработчик,
+    тестировщик) — часть функционала не будет сделана: «3. Функционал реализован
+    частично, работы будут продолжены».
+    """
+    keys = [_role_key(r) for r in missing_roles]
+    if keys and all(k.startswith(_ROLLOUT_PREFIXES) for k in keys):
+        return TargetOption.READY_FOR_IT
+    return TargetOption.FUNC_PARTIAL
+
+
+def _roles_text(missing: dict[str, float]) -> str:
+    return ", ".join(f"«{r}» {_fmt(round(h, 1))} ч" for r, h in
+                     sorted(missing.items(), key=lambda x: -x[1]))
+
+
+def _hire_text(missing: dict[str, float]) -> str:
+    roles = ", ".join(f"«{r}»" for r in sorted(missing, key=lambda r: -missing[r]))
+    return (f"Нанять или обучить специалиста: {roles} — тогда задачу можно довести "
+            f"до цели «{TargetOption.PRODUCTION.label}».")
+
+
+def included_partial(
+    task_id: str,
+    team_id: str,
+    start_sprint: int,
+    end_sprint: int,
+    missing: dict[str, float],
+    planned_hh: float,
+    target: TargetOption | None = None,
+    *,
+    busy: dict[str, float] | None = None,
+) -> Reason:
+    """Задача включена с частичной целью.
+
+    missing — роли, которых нет в компании; busy — роли, которые есть, но их
+    свободных часов до конца квартала не хватает. Их часы вынесены в дефицит.
+    """
+    busy = dict(busy or {})
+    target = target or partial_target([*missing, *busy])
+    span = (f"спринт {start_sprint}" if start_sprint == end_sprint
+            else f"спринты {start_sprint}–{end_sprint}")
+    why = []
+    if missing:
+        why.append(f"в компании нет специалистов ролей {_roles_text(missing)}")
+    if busy:
+        why.append(f"свободных часов ролей {_roles_text(busy)} до конца квартала не хватает — "
+                   f"они заняты задачами с более высоким приоритетом")
+    detail = (
+        f"Поставлена в {span} с частичной целью «{target.label}»: {'; '.join(why)}. "
+        f"Работа остальных ролей ({_fmt(round(planned_hh, 1))} ч) выполняется в квартале, "
+        f"недостающие часы вынесены в дефицит."
+    )
+    advice = []
+    if missing:
+        advice.append(_hire_text(missing))
+    if busy:
+        roles = ", ".join(f"«{r}»" for r in sorted(busy, key=lambda r: -busy[r]))
+        advice.append(f"Для полной цели привлечь из других команд или нанять: {roles}.")
+    facts = {"task_id": task_id, "team_id": team_id, "start_sprint": start_sprint,
+             "end_sprint": end_sprint, "missing_roles": dict(missing),
+             "busy_roles": busy, "planned_hh": planned_hh}
+    return make_reason(InclusionCode.PARTIAL_TARGET, detail, target=target,
+                       facts=facts, recommendation=" ".join(advice))
+
+
+def role_absent(
+    task_id: str,
+    missing: dict[str, float],
+    total_hh: float,
+    *,
+    strict: bool = False,
+) -> Reason:
+    """В компании нет специалистов ролей задачи — задача переносится."""
+    share = sum(missing.values()) / total_hh if total_hh else 1.0
+    if strict:
+        why = "по строгому правилу задача без всех ролей не берётся в квартал"
+    elif share >= 1:
+        why = "выполнить из неё нечего"
+    else:
+        why = (f"это {share:.0%} трудозатрат задачи — частичная цель не даст "
+               f"осмысленного результата")
+    detail = f"В компании нет специалистов ролей {_roles_text(missing)}: {why}."
+    facts = {"task_id": task_id, "missing_roles": dict(missing),
+             "missing_share": round(share, 3)}
+    return make_reason(ReasonCode.NO_RESOURCES, detail, facts=facts,
+                       target=TargetOption.NOT_IN_QUARTER,
+                       recommendation=_hire_text(missing))
+
+
+def dependency_cycle(task_id: str, cycle: list[str]) -> Reason:
+    """Задача в цикле зависимостей — начать её нельзя ни в каком порядке."""
+    path = " → ".join(cycle)
+    detail = (f"Задача в цикле зависимостей ({path}): каждая ждёт другую, начать "
+              f"ни одну нельзя.")
+    return make_reason(ReasonCode.DEPENDENT_TEAM_NOT_READY, detail,
+                       target=TargetOption.NOT_IN_QUARTER,
+                       facts={"task_id": task_id, "cycle": list(cycle)},
+                       recommendation="Уточнить у команд, какая связь лишняя, и "
+                                      "поправить Task_dependencies.")
+
+
+def unknown_team(task_id: str, team_id: str) -> Reason:
+    """Для команды нет истории velocity — ёмкость в SP неизвестна."""
+    detail = (f"Для команды {team_id or '—'} нет истории velocity (Team_history), "
+              f"поэтому её ёмкость в SP неизвестна и задачу нельзя разместить.")
+    return make_reason(ReasonCode.NO_RESOURCES, detail,
+                       target=TargetOption.NOT_IN_QUARTER,
+                       facts={"task_id": task_id, "team_id": team_id},
+                       recommendation="Добавить снапшоты velocity команды в Team_history.")

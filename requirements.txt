@@ -1,7 +1,9 @@
-pandas
-openpyxl
-streamlit
-streamlit-agraph
-pytest
-# fastapi  # раскомментировать, если понадобится отдельный API-слой (backend/api/server.py)
-# uvicorn  # ASGI-сервер для FastAPI, если используется
+pandas>=2.1
+openpyxl>=3.1
+streamlit>=1.46
+altair>=5.0
+streamlit-agraph>=0.0.45
+pytest>=8.0
+# Необязательно — HTTP-API поверх отчёта (backend/api/server.py):
+# fastapi>=0.110
+# uvicorn>=0.29

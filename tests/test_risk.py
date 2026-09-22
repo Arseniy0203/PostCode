@@ -120,11 +120,21 @@ def test_yellow_cascade_reports_root_and_whole_chain():
     assert set(alert.affected_prodf_ids) == {"PRODF-7124", "PRODF-7123"}
 
 
-def test_yellow_uses_reference_snapshot_instead_of_baseline():
+def test_yellow_persists_while_shift_against_baseline_remains():
     plan = _plan()
     _task(plan, "DB-202")["forecast_end_sprint"] = 3
     previous = copy.deepcopy(plan["current"])
-    assert check_cascade(plan, DEPS, reference=previous) == []
+    [alert] = check_cascade(plan, DEPS, reference=previous)
+    assert alert.task_id == "DB-202" and "С прошлого пересчёта" not in alert.description
+
+
+def test_yellow_mentions_further_delay_since_previous_snapshot():
+    plan = _plan()
+    _task(plan, "DB-202")["forecast_end_sprint"] = 3
+    previous = copy.deepcopy(plan["current"])
+    _task(plan, "DB-202")["forecast_end_sprint"] = 4
+    [alert] = check_cascade(plan, DEPS, reference=previous)
+    assert "С прошлого пересчёта — ещё +1" in alert.description
 
 
 def test_no_yellow_for_shifted_task_without_dependents():
@@ -177,17 +187,18 @@ def test_orange_hire_for_postponed_task_with_missing_role():
     assert "Нанять" in alert.recommendation
 
 
-def test_missing_roles_grouped_into_one_alert_per_team():
+def test_missing_roles_one_alert_per_role():
     current = [
         _t("SRV-4051", "PRODF-7130", "Team-Delta", None, None, decision="postponed",
            hh={"Руководитель проекта": 20, "Разработчик 1С": 50}),
         _t("SRV-4052", "PRODF-7130", "Team-Delta", None, None, decision="postponed",
            hh={"Руководитель проекта": 15}),
     ]
-    [alert] = check_resource_deficit(save_baseline({"current": current}), ENGINEERS)
-    assert alert.role == "Разработчик 1С" and alert.deficit_hh == 85
-    assert set(alert.affected_task_ids) == {"SRV-4051", "SRV-4052"}
-    assert "Руководитель проекта" in alert.description
+    alerts = {a.role: a for a in check_resource_deficit(save_baseline({"current": current}), ENGINEERS)}
+    assert set(alerts) == {"Руководитель проекта", "Разработчик 1С"}
+    assert alerts["Руководитель проекта"].deficit_hh == 35
+    assert set(alerts["Руководитель проекта"].affected_task_ids) == {"SRV-4051", "SRV-4052"}
+    assert alerts["Разработчик 1С"].affected_task_ids == ("SRV-4051",)
 
 
 def test_no_orange_after_last_sprint():
