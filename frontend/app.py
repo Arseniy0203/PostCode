@@ -28,6 +28,11 @@ from backend.starmap.bus_factor import starmap_summary
 from backend.recalculation.recalc import apply_sprint_fact
 from backend.kpi.metrics import kpi_breakdown
 from backend.recalculation.baseline import save_baseline
+from backend.recalculation.pipeline import (
+    dataset_from_parsed,
+    fact_from_dataset_excel,
+    week0_from_excel,
+)
 
 from views.plan_view import render_plan_view
 from views.risk_view import render_risk_view
@@ -255,122 +260,39 @@ def section_label(text: str) -> None:
 
 @st.cache_data(show_spinner="Сборка Baseline и проверка рисков...")
 def process_baseline(file_bytes: bytes) -> dict[str, Any]:
-    """Парсит исходный датасет и инициализирует Baseline-план."""
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
-        tmp.write(file_bytes)
-        tmp_path = tmp.name
+    """Парсит исходный датасет и строит Baseline тем же конвейером, что и пересчёт.
 
-    try:
-        parsed = parse_excel(tmp_path)
-        clean_deps, _ = filter_orphan_dependencies(parsed["task_dependencies"], parsed["tasks"])
-
-        # Динамический сбор Capacity из Team_history и Engineers_profiles
-        capacity = {"team_sp": {}, "engineer_hh": {}}
-
-        for th in parsed.get("team_history", []):
-            t_id = th.get("team_id")
-            sp = th.get("velocity_sp") or th.get("velocity_achieved")
-            if t_id and sp:
-                capacity["team_sp"][t_id] = float(sp) * 0.8
-
-        # Планировщику нужны часы инженеров (1.0 ставки = 80 часов)
-        for eng in parsed.get("engineers_profiles", []):
-            e_id = eng.get("engineer_id")
-            rate = float(eng.get("capacity_rate") or 0.0)
-            if e_id:
-                capacity["engineer_hh"][e_id] = 80.0 * rate
-
-        plan = build_baseline_plan(
-            tasks=parsed["tasks"],
-            capacity=capacity,
-            dependencies=clean_deps,
-            engineers=parsed["engineers_profiles"],
-            estimates=parsed["estimates"]
-        )
-
-        plan = save_baseline(plan)
-
-        alerts = [a.to_dict() for a in collect_alerts(plan, clean_deps, parsed["engineers_profiles"])]
-        starmap = starmap_summary(plan, parsed["engineers_profiles"], parsed["estimates"])
-
-        return {
-            "parsed": parsed,
-            "clean_deps": clean_deps,
-            "plan": plan,
-            "alerts": alerts,
-            "starmap": starmap
-        }
-    finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
+    Задачи в работе планируются на остаток (смета − Spent_time_roles), ёмкость
+    команды — средний velocity × 0.8 (backend.recalculation.pipeline.week0_from_excel).
+    """
+    state = week0_from_excel(file_bytes)
+    return {key: state[key] for key in ("parsed", "clean_deps", "plan", "alerts", "starmap")}
 
 
 @st.cache_data(show_spinner="Применение факта и пересчет текущего плана...")
 def process_fact(prev_plan: dict[str, Any], master_deps: list[dict[str, Any]], master_engineers: list[dict[str, Any]],
                  master_estimates: list[dict[str, Any]], master_history: list[dict[str, Any]],
                  fact_file_bytes: bytes) -> dict[str, Any]:
-    """Обрабатывает факт, обновляет Plan.current на основе предыдущего плана и пересчитывает риски."""
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
-        tmp.write(fact_file_bytes)
-        tmp_path = tmp.name
+    """Обрабатывает факт, обновляет Plan.current на основе предыдущего плана и пересчитывает риски.
 
-    try:
-        fact_parsed = parse_excel(tmp_path)
-
-        fact_dict = {"tasks": {}}
-        for task in fact_parsed.get("tasks", []):
-            tid = str(task.get("task_id") or "").strip()
-            if tid:
-                fact_dict["tasks"][tid] = {"status": str(task.get("status", "")).strip(), "spent_hh": {}}
-
-        for spent in fact_parsed.get("spent_time_roles", []):
-            tid = str(spent.get("task_id") or "").strip()
-            if tid and tid in fact_dict["tasks"]:
-                for key, value in spent.items():
-                    if key.lower() not in ["task_id", "исходное время", ""]:
-                        try:
-                            hours = float(value)
-                            if hours > 0:
-                                fact_dict["tasks"][tid]["spent_hh"][key] = hours
-                        except (ValueError, TypeError):
-                            pass
-
-        # Реконструируем capacity из history и engineers
-        capacity = {"team_sp": {}, "engineer_hh": {}}
-
-        for th in master_history:
-            t_id = th.get("team_id")
-            sp = th.get("velocity_sp") or th.get("velocity_achieved")
-            if t_id and sp:
-                capacity["team_sp"][t_id] = float(sp) * 0.8
-
-        for eng in master_engineers:
-            e_id = eng.get("engineer_id")
-            rate = float(eng.get("capacity_rate") or 0.0)
-            if e_id:
-                capacity["engineer_hh"][e_id] = 80.0 * rate
-
-        updated_plan = copy.deepcopy(prev_plan)
-
-        updated_plan = apply_sprint_fact(
-            plan=updated_plan,
-            fact=fact_dict,
-            dependencies=master_deps,
-            engineers=master_engineers,
-            capacity=capacity
-        )
-
-        alerts = [a.to_dict() for a in collect_alerts(updated_plan, master_deps, master_engineers)]
-        starmap = starmap_summary(updated_plan, master_engineers, master_estimates)
-
-        return {
-            "plan": updated_plan,
-            "alerts": alerts,
-            "starmap": starmap
-        }
-    finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
+    Файл факта — датасет с НАКОПЛЕННЫМИ часами (как в demo_scenarios): уже учтённое
+    вычитается, в пересчёт идут часы именно за этот спринт.
+    """
+    fact = fact_from_dataset_excel(fact_file_bytes, prev_plan)
+    capacity = prev_plan.get("capacity") or dataset_from_parsed(
+        {"team_history": master_history, "engineers_profiles": master_engineers})["capacity"]
+    updated_plan = apply_sprint_fact(
+        plan=copy.deepcopy(prev_plan),
+        fact=fact,
+        dependencies=master_deps,
+        engineers=master_engineers,
+        capacity=capacity,
+    )
+    return {
+        "plan": updated_plan,
+        "alerts": [a.to_dict() for a in updated_plan.get("alerts") or []],
+        "starmap": starmap_summary(updated_plan, master_engineers, master_estimates),
+    }
 
 
 def init_session_state() -> None:
@@ -380,8 +302,13 @@ def init_session_state() -> None:
         st.session_state.master_dataset = None  # Сырые данные Недели 0
 
 
-def render_kpi_widgets(baseline_tasks: list[dict[str, Any]], current_tasks: list[dict[str, Any]]) -> None:
-    """Отрисовывает виджеты KPI в шапке приложения."""
+def render_kpi_widgets(baseline_tasks: list[dict[str, Any]], current_tasks: list[dict[str, Any]],
+                       current_sprint: int = 0) -> None:
+    """Отрисовывает виджеты KPI в шапке приложения.
+
+    current_sprint — последний спринт с загруженным фактом (0 — Неделя 0): Say/Do
+    показывается за него, PI до конца квартала — прогнозом по текущему плану.
+    """
     section_label("Квартальные показатели")
     st.caption("Знаменатель обеих метрик зафиксирован на Неделе 0 и не меняется при пересчёте.")
 
@@ -389,14 +316,17 @@ def render_kpi_widgets(baseline_tasks: list[dict[str, Any]], current_tasks: list
         st.info("Baseline пуст. Ожидание данных для расчета KPI.")
         return
 
-    metrics = kpi_breakdown(baseline_tasks, current_tasks)
+    current_sprint = int(current_sprint or 0)
+    metrics = kpi_breakdown(baseline_tasks, current_tasks, current_sprint=current_sprint)
 
-    pi_fact = metrics["pi_predictability"]["fact"]["value"]
+    quarter_over = current_sprint >= 6
+    pi_mode = "fact" if quarter_over else "forecast"
+    pi_fact = metrics["pi_predictability"][pi_mode]["value"]
     pi_norm = metrics["norms"]["pi_predictability"]
 
     say_do_list = metrics["say_do"]
-    latest_sd = say_do_list[-1] if say_do_list else {"sprint": 1, "value": 0.0}
-    sd_val = latest_sd["value"]
+    latest_sd = next((row for row in say_do_list if row["sprint"] == current_sprint), None)
+    sd_val = latest_sd["value"] if latest_sd else 0.0
     sd_norm = metrics["norms"]["say_do"]
 
     col1, col2 = st.columns(2)
@@ -404,13 +334,22 @@ def render_kpi_widgets(baseline_tasks: list[dict[str, Any]], current_tasks: list
     with col1:
         pi_in_norm = pi_norm[0] <= pi_fact <= pi_norm[1]
         st.metric(
-            label=f"PI Predictability (Норма {pi_norm[0]}-{pi_norm[1]}%)",
+            label=(f"PI Predictability{'' if quarter_over else ' · прогноз'} "
+                   f"(Норма {pi_norm[0]}-{pi_norm[1]}%)"),
             value=f"{pi_fact:.1f}%",
             delta="В пределах нормы" if pi_in_norm else "Отклонение от нормы",
             delta_color="normal" if pi_in_norm else "inverse"
         )
 
     with col2:
+        if latest_sd is None or latest_sd.get("status") in ("future", "no_data"):
+            st.metric(
+                label=f"Say/Do Ratio (Норма {sd_norm[0]}-{sd_norm[1]}%)",
+                value="—",
+                delta=latest_sd["status_label"] if latest_sd else "Факт спринтов ещё не загружен",
+                delta_color="off",
+            )
+            return
         sd_in_norm = sd_norm[0] <= sd_val <= sd_norm[1]
         st.metric(
             label=f"Sprint {latest_sd['sprint']} Say/Do Ratio (Норма {sd_norm[0]}-{sd_norm[1]}%)",
@@ -542,7 +481,8 @@ def main() -> None:
     alerts = active_state["alerts"]
     starmap = active_state["starmap"]
 
-    render_kpi_widgets(plan_dict.get("baseline", []), plan_dict.get("current", []))
+    render_kpi_widgets(plan_dict.get("baseline", []), plan_dict.get("current", []),
+                       plan_dict.get("current_sprint", 0))
     st.divider()
 
     if page == "План (PI-цикл)":

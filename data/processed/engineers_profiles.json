@@ -11,7 +11,7 @@
             "Hibernate",
             "Apache Kafka"
         ],
-        "capacity_rate": "1.0"
+        "capacity_rate": 1.0
     },
     {
         "engineer_id": "ENG-402",
@@ -25,7 +25,7 @@
             "Docker",
             "Liquibase"
         ],
-        "capacity_rate": "1.0"
+        "capacity_rate": 1.0
     },
     {
         "engineer_id": "ENG-403",
@@ -39,7 +39,7 @@
             "RabbitMQ",
             "Microservices Архитектура"
         ],
-        "capacity_rate": "1.0"
+        "capacity_rate": 1.0
     },
     {
         "engineer_id": "ENG-404",
@@ -57,7 +57,7 @@
             "BPMN",
             "UML"
         ],
-        "capacity_rate": "1.0"
+        "capacity_rate": 1.0
     },
     {
         "engineer_id": "ENG-405",
@@ -72,7 +72,7 @@
             "A/B testing",
             "CJM"
         ],
-        "capacity_rate": "0.5"
+        "capacity_rate": 0.5
     },
     {
         "engineer_id": "ENG-405",
@@ -87,7 +87,7 @@
             "A/B testing",
             "CJM"
         ],
-        "capacity_rate": "0.5"
+        "capacity_rate": 0.5
     },
     {
         "engineer_id": "ENG-406",
@@ -102,7 +102,7 @@
             "HTML/CSS",
             "Git"
         ],
-        "capacity_rate": "0.5"
+        "capacity_rate": 0.5
     },
     {
         "engineer_id": "ENG-406",
@@ -117,7 +117,7 @@
             "HTML/CSS",
             "Git"
         ],
-        "capacity_rate": "0.5"
+        "capacity_rate": 0.5
     },
     {
         "engineer_id": "ENG-407",
@@ -133,7 +133,7 @@
             "GraphQL",
             "WebSocket"
         ],
-        "capacity_rate": "1.0"
+        "capacity_rate": 1.0
     },
     {
         "engineer_id": "ENG-408",
@@ -148,7 +148,7 @@
             "Regression/Smoke/Functional testing",
             "Postman"
         ],
-        "capacity_rate": "1.0"
+        "capacity_rate": 1.0
     },
     {
         "engineer_id": "ENG-409",
@@ -161,7 +161,7 @@
             "Ручное тестирование",
             "Снифферы трафика (Charles)"
         ],
-        "capacity_rate": "1.0"
+        "capacity_rate": 1.0
     },
     {
         "engineer_id": "ENG-410",
@@ -178,7 +178,7 @@
             "Postman",
             "CI/CD"
         ],
-        "capacity_rate": "1.0"
+        "capacity_rate": 1.0
     },
     {
         "engineer_id": "ENG-411",
@@ -192,7 +192,7 @@
             "DevTools",
             "Regression/Smoke/Functional testing"
         ],
-        "capacity_rate": "1.0"
+        "capacity_rate": 1.0
     },
     {
         "engineer_id": "ENG-412",
@@ -205,7 +205,7 @@
             "Тестирование безопасности",
             "Нагрузочное тестирование (JMeter)"
         ],
-        "capacity_rate": "1.0"
+        "capacity_rate": 1.0
     },
     {
         "engineer_id": "ENG-413",
@@ -222,7 +222,7 @@
             "SQL",
             "Postman"
         ],
-        "capacity_rate": "1.0"
+        "capacity_rate": 1.0
     },
     {
         "engineer_id": "ENG-414",
@@ -237,7 +237,7 @@
             "ElasticSearch",
             "Архитектура БД"
         ],
-        "capacity_rate": "1.0"
+        "capacity_rate": 1.0
     },
     {
         "engineer_id": "ENG-415",
@@ -251,7 +251,7 @@
             "DevTools",
             "Интеграционное тестирование"
         ],
-        "capacity_rate": "1.0"
+        "capacity_rate": 1.0
     },
     {
         "engineer_id": "ENG-416",
@@ -269,7 +269,7 @@
             "SQLite",
             "CocoaPods"
         ],
-        "capacity_rate": "1.0"
+        "capacity_rate": 1.0
     },
     {
         "engineer_id": "ENG-417",
@@ -287,7 +287,7 @@
             "Room",
             "SQLite"
         ],
-        "capacity_rate": "1.0"
+        "capacity_rate": 1.0
     },
     {
         "engineer_id": "ENG-418",
@@ -301,7 +301,7 @@
             "Проектирование интеграций",
             "REST/gRPC"
         ],
-        "capacity_rate": "1.0"
+        "capacity_rate": 1.0
     },
     {
         "engineer_id": "ENG-419",
@@ -317,7 +317,7 @@
             "Terraform",
             "Prometheus"
         ],
-        "capacity_rate": "0.5"
+        "capacity_rate": 0.5
     },
     {
         "engineer_id": "ENG-419",
@@ -333,7 +333,7 @@
             "Terraform",
             "Prometheus"
         ],
-        "capacity_rate": "0.5"
+        "capacity_rate": 0.5
     },
     {
         "engineer_id": "ENG-420",
@@ -349,7 +349,7 @@
             "LINQ",
             "Microservices"
         ],
-        "capacity_rate": "1.0"
+        "capacity_rate": 1.0
     },
     {
         "engineer_id": "ENG-421",
@@ -364,7 +364,7 @@
             "Математическая статистика",
             "BI инструменты"
         ],
-        "capacity_rate": "1.0"
+        "capacity_rate": 1.0
     },
     {
         "engineer_id": "ENG-422",
@@ -380,7 +380,7 @@
             "Airflow",
             "Оптимизация ETL"
         ],
-        "capacity_rate": "1.0"
+        "capacity_rate": 1.0
     },
     {
         "engineer_id": "ENG-423",
@@ -393,7 +393,7 @@
             "Продуктовые метрики ИИ",
             "Роадмапы"
         ],
-        "capacity_rate": "1.0"
+        "capacity_rate": 1.0
     },
     {
         "engineer_id": "ENG-424",
@@ -408,7 +408,7 @@
             "Kafka",
             "CI/CD"
         ],
-        "capacity_rate": "1.0"
+        "capacity_rate": 1.0
     },
     {
         "engineer_id": "ENG-425",
@@ -423,7 +423,7 @@
             "UML",
             "Confluence"
         ],
-        "capacity_rate": "1.0"
+        "capacity_rate": 1.0
     },
     {
         "engineer_id": "ENG-426",
@@ -437,7 +437,7 @@
             "Математический анализ",
             "Pandas"
         ],
-        "capacity_rate": "0.5"
+        "capacity_rate": 0.5
     },
     {
         "engineer_id": "ENG-426",
@@ -451,7 +451,7 @@
             "Математический анализ",
             "Pandas"
         ],
-        "capacity_rate": "0.5"
+        "capacity_rate": 0.5
     },
     {
         "engineer_id": "ENG-427",
@@ -466,7 +466,7 @@
             "MS SQL",
             "Git"
         ],
-        "capacity_rate": "1.0"
+        "capacity_rate": 1.0
     },
     {
         "engineer_id": "ENG-428",
@@ -480,7 +480,7 @@
             "UML",
             "REST/SOAP интеграции"
         ],
-        "capacity_rate": "1.0"
+        "capacity_rate": 1.0
     },
     {
         "engineer_id": "ENG-429",
@@ -495,7 +495,7 @@
             "Docker",
             "Kubernetes"
         ],
-        "capacity_rate": "1.0"
+        "capacity_rate": 1.0
     },
     {
         "engineer_id": "ENG-430",
@@ -509,6 +509,6 @@
             "SQL",
             "Jira"
         ],
-        "capacity_rate": "1.0"
+        "capacity_rate": 1.0
     }
 ]

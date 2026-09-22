@@ -22,6 +22,7 @@ from backend.recalculation.plan_fields import (
     field,
     is_done,
     prodf_id,
+    remaining_hh,
     start_sprint,
     task_id,
 )
@@ -155,8 +156,12 @@ def _task_roles(
     roles: dict[str, tuple[str, float]] = {}
     estimated = field(task, "estimated_hh", default={}) or {}
     if isinstance(estimated, dict):
-        for role, hours in estimated.items():
-            _add_role(roles, role, hours)
+        # Для задачи в работе важен остаток (смета − факт), а не вся смета.
+        for name, hours in remaining_hh(task).values():
+            _add_role(roles, name, hours)
+        if not roles:
+            for role, hours in estimated.items():
+                _add_role(roles, role, hours)
     if roles:
         return roles
 
@@ -317,6 +322,7 @@ def link_risk_to_tasks(
             linked.append({
                 "task_id": task_id(task),
                 "prodf_id": prodf_id(task),
+                "decision": field(task, "decision", default="included") or "included",
                 "team_id": field(task, "team_id", default=""),
                 "role": role_name,
                 "hours": hours,
@@ -340,22 +346,32 @@ def absence_impact(
     Прямой ответ на требование условия: показать, где отсутствие одного
     сотрудника создаёт риск для выполнения работ.
     """
+    from backend.starmap.recommendations import train_candidates
+
     index = competency_index(engineers)
+    required = required_competencies(plan, engineers, estimates) if plan is not None else {}
+    # Только то, что нужно плану: TOGAF и ARKit в профиле — не риск для квартала.
     lost = sorted(
-        entry["name"] for entry in index.values()
-        if entry["engineers"] == {engineer_id}
+        entry["name"] for key, entry in index.items()
+        if entry["engineers"] == {engineer_id} and (not required or key in required)
     )
     linked = link_risk_to_tasks(plan, lost, engineers, estimates)
     tasks = {t["task_id"]: t for items in linked.values() for t in items}
+    in_plan = [t for t in tasks.values() if t.get("decision") != "postponed"]
     profile = next((p for p in normalize_engineers(engineers)
                     if p["engineer_id"] == engineer_id), None)
+    backups = train_candidates(profile["role"], engineers) if profile else []
     return {
         "engineer_id": engineer_id,
         "role": profile["role"] if profile else "",
         "teams": sorted(profile["teams"]) if profile else [],
         "sole_competencies": lost,
-        "tasks_at_risk": sorted(tasks.values(), key=lambda t: t["task_id"]),
-        "prodf_at_risk": sorted({t["prodf_id"] for t in tasks.values() if t["prodf_id"]}),
+        "tasks_at_risk": sorted(in_plan, key=lambda t: t["task_id"]),
+        "postponed_tasks": sorted((t for t in tasks.values() if t.get("decision") == "postponed"),
+                                  key=lambda t: t["task_id"]),
+        "hours_at_risk": round(sum(float(t.get("hours") or 0) for t in in_plan), 1),
+        "prodf_at_risk": sorted({t["prodf_id"] for t in in_plan if t["prodf_id"]}),
+        "backup_candidates": backups,
     }
 
 
@@ -370,8 +386,15 @@ def starmap_summary(
     frontend/views/star_map_view.py.
     """
     from backend.starmap.profiles import build_engineer_profiles, build_team_profiles
+    from backend.starmap.recommendations import (
+        hire_recommendations,
+        team_bus_factor,
+        train_recommendations,
+    )
 
     profiles = normalize_engineers(engineers)
+    required = (required_competencies(plan, engineers, estimates)
+                if plan is not None else {})
     factors = bus_factors(engineers, plan, estimates=estimates,
                           only_required=plan is not None)
     spof = [name for name, count in factors.items() if count == 1]
@@ -383,7 +406,6 @@ def starmap_summary(
 
     # Компетенции без носителей не связываются через инженеров (их нет), поэтому
     # задачи берём прямо из требований плана.
-    required = required_competencies(plan, engineers, estimates) if plan is not None else {}
     missing_tasks = {
         entry["name"]: sorted(entry["tasks"])
         for entry in required.values()
@@ -421,5 +443,44 @@ def starmap_summary(
         },
         "engineer_profiles": build_engineer_profiles(engineers),
         "team_profiles": build_team_profiles(engineers),
+        "single_points_grouped": _group_by_role(spof, profiles),
+        "team_bus_factor": team_bus_factor(plan, engineers) if plan is not None else {},
+        "recommendations": {
+            "hire": hire_recommendations(plan, engineers) if plan is not None else [],
+            "train": train_recommendations(plan, engineers) if plan is not None else [],
+        },
         "method": BUS_FACTOR_METHOD,
     }
+
+
+def _group_by_role(spof: list[str], profiles: list[dict[str, Any]]) -> dict[str, list[str]]:
+    """Одиночки, сгруппированные по носителю: «Разработчик .net» — C#, .NET Core.
+
+    Роль и её ключевой стек у единственного носителя — один и тот же риск;
+    в UI его лучше показать одной строкой, а не тремя.
+    """
+    by_owner: dict[str, list[str]] = {}
+    index = competency_index(profiles_to_rows(profiles))
+    for name in spof:
+        entry = next((e for e in index.values() if e["name"] == name), None)
+        if not entry or len(entry["engineers"]) != 1:
+            continue
+        owner = next(iter(entry["engineers"]))
+        by_owner.setdefault(owner, []).append(name)
+    role_of = {p["engineer_id"]: p["role"] for p in profiles}
+    grouped: dict[str, list[str]] = {}
+    for owner, names in sorted(by_owner.items()):
+        head = role_of.get(owner) or owner
+        grouped[f"{head} ({owner})"] = sorted(n for n in names if n != head)
+    return grouped
+
+
+def profiles_to_rows(profiles: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Профили обратно в строки Engineers_profiles (по строке на команду)."""
+    rows = []
+    for p in profiles:
+        for team, rate in (p.get("teams") or {"": 1.0}).items():
+            rows.append({"engineer_id": p["engineer_id"], "team_id": team, "role": p["role"],
+                         "grade": p.get("grade"), "capacity_rate": rate,
+                         "skills_declared": list(p.get("skills_declared") or [])})
+    return rows

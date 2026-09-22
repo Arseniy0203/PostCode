@@ -34,7 +34,7 @@ from backend.recalculation.quarter import (
     sprint_dates,
 )
 from backend.recalculation.recalc import is_cancelled, is_deferred
-from backend.risk.alerts import blocked_by_postponed, work_progress
+from backend.risk.alerts import _plural, blocked_by_postponed, work_progress
 
 KIND_LABEL = {
     "manual": "перенесена решением руководителя",
@@ -44,6 +44,7 @@ KIND_LABEL = {
     "not_estimated": "не оценена",
     "capacity": "не хватило ёмкости команды",
     "carry_over": "не успели закончить",
+    "partial": "частичная цель: доделать работу ролей, которых нет в компании",
 }
 
 
@@ -63,7 +64,9 @@ def next_quarter_backlog(
     today = QUARTER_START if now == 0 else sprint_dates(now)[1]
     final = now >= QUARTER_SPRINTS
 
-    staff = [*engineers, *(plan.get("engineers_hired") or [])]
+    gone = set(plan.get("engineers_unavailable") or [])
+    staff = [e for e in [*engineers, *(plan.get("engineers_hired") or [])]
+             if e.get("engineer_id") not in gone]
     people: dict[str, set[str]] = defaultdict(set)
     for eng in staff:
         people[normalize_role(eng.get("role", ""))].add(str(eng.get("engineer_id")))
@@ -78,12 +81,20 @@ def next_quarter_backlog(
         if is_done(task) or is_cancelled(task):
             continue
         end = end_sprint(task)
-        if is_included(task) and not final and end is not None and end <= QUARTER_SPRINTS:
-            continue
         tid, team, left = task_id(task), team_id(task), remaining_hh(task)
         absent = [name for key, (name, _) in left.items() if not people.get(key)]
+        unstaffed = {normalize_role(r) for r in field(task, "unstaffed_hh", default={}) or {}}
+        on_time = is_included(task) and not final and end is not None and end <= QUARTER_SPRINTS
+        if on_time and not unstaffed:
+            continue
         sp = float(field(task, "estimation_sp", default=0) or 0)
-        if is_included(task):
+        if on_time:
+            # Идёт с частичной целью: в следующий квартал — только недостающие часы ролей.
+            kind = "partial"
+            left = {k: v for k, v in left.items() if k in unstaffed}
+            absent = [name for key, (name, _) in left.items() if not people.get(key)]
+            sp = 0.0
+        elif is_included(task):
             kind = "carry_over"
         elif is_deferred(task):
             kind = "manual"
@@ -106,9 +117,12 @@ def next_quarter_backlog(
             "kind": kind,
             "reason": KIND_LABEL[kind],
             "detail": (f"ждёт {' → '.join(blocked[tid])}" if kind == "blocked"
+                       else ", ".join(f"«{n}»" for n, _ in left.values()) if kind == "partial"
                        else ", ".join(f"«{r}»" for r in absent) if kind == "no_role"
                        else field(task, "reason_detail", default="") or ""),
-            "target_label": (TargetOption.FUNC_PARTIAL if progress else TargetOption.NOT_IN_QUARTER).label,
+            "target_label": (field(task, "target_label", default=None) if kind == "partial"
+                             else (TargetOption.FUNC_PARTIAL if progress
+                                   else TargetOption.NOT_IN_QUARTER).label),
             "progress": round(progress, 2),
             "sp": sp,
             "hours_left": round(sum(h for _, h in left.values()), 1),
@@ -142,7 +156,8 @@ def next_quarter_backlog(
             "start_search_by": hire_by.isoformat(),
             "headline": (f"Нанять «{entry['role']}» к {start:%d.%m.%Y}: {when} "
                          f"(найм ≈ {HIRE_LEAD_SPRINTS * SPRINT_DAYS // 7} недель) — "
-                         f"разблокирует {count} задач(и), {entry['hours']:g} ч."),
+                         f"нужен для {count} {_plural(count, 'задачи', 'задач', 'задач')}, "
+                         f"{entry['hours']:g} ч."),
         })
     for row in rows:
         if row["kind"] == "oversized":

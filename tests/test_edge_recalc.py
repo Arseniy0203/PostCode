@@ -30,18 +30,27 @@ def _t(tid, team, decision="postponed", hh=None, **kw):
 # --- «роль есть, но все заняты» -----------------------------------------------
 
 
+def test_hiring_alert_only_for_roles_absent_in_whole_company():
+    current = [_t("SRV-4051", "Team-Delta", hh={"Разработчик Java": 100, "Руководитель проекта": 10})]
+    engineers = [{"engineer_id": "ENG-414", "team_id": "Team-K", "role": "Разработчик Java",
+                  "capacity_rate": 1.0}]
+    [alert] = check_resource_deficit(save_baseline({"current": current}), engineers)
+    assert (alert.category, alert.role) == ("hiring", "Руководитель проекта")
+    assert "В компании нет ни одного инженера роли «Руководитель проекта»" in alert.description
+    assert "Java" not in alert.description, "Java в компании есть — планировщик возьмёт её из пула"
+
+
 def test_hire_when_role_exists_but_everyone_is_busy():
     busy = {s: {"ENG-414": 80} for s in range(1, 7)}
     current = [
-        _t("SRV-4051", "Team-Delta", hh={"Разработчик Java": 100, "Руководитель проекта": 10}),
+        _t("SRV-4051", "Team-Delta", hh={"Разработчик Java": 100}),
         _t("MP-102", "Team-K", decision="included", planned_start_sprint=1, planned_end_sprint=6,
            hh={"Разработчик Java": 480}, allocation=busy),
     ]
     engineers = [{"engineer_id": "ENG-414", "team_id": "Team-K", "role": "Разработчик Java",
                   "capacity_rate": 1.0}]
     plan = save_baseline({"current": current})
-    alert = next(a for a in check_resource_deficit(plan, engineers) if a.category == "hiring")
-    assert "«Руководитель проекта» — в компании нет ни одного" in alert.recommendation
+    alert = next(a for a in check_resource_deficit(plan, engineers) if a.category == "capacity")
     assert "«Разработчик Java» — в компании 1 чел." in alert.recommendation
     assert "все заняты" in alert.recommendation
 
@@ -52,15 +61,27 @@ def test_borrow_when_other_team_has_free_hours_for_whole_need():
                   "capacity_rate": 1.0}]
     [alert] = check_resource_deficit(save_baseline({"current": current}), engineers)
     assert alert.recommendation.startswith("Привлечь из других команд: «Разработчик Java» — ENG-414")
+    assert "единственный носитель роли" in alert.recommendation
 
 
-def test_partial_borrow_is_hire_with_named_helper():
+def test_partial_borrow_starts_when_person_can_switch():
     current = [_t("SRV-4051", "Team-Delta", hh={"Разработчик Java": 600})]
     engineers = [{"engineer_id": "ENG-414", "team_id": "Team-K", "role": "Разработчик Java",
                   "capacity_rate": 1.0}]
     [alert] = check_resource_deficit(save_baseline({"current": current}), engineers)
-    assert "свободно только 480 ч из нужных 600 ч" in alert.recommendation
+    # переключение ≈ 1 спринт: человек доступен со 2-го по 6-й спринт → 400 ч, а не 480
+    assert "свободно только 400 ч из нужных 600 ч" in alert.recommendation
     assert "частично: ENG-414 из Team-K" in alert.recommendation
+
+
+def test_same_engineer_is_not_offered_to_two_teams():
+    current = [_t("A-1", "Team-Delta", hh={"Архитектор решений": 300}, rung=90),
+               _t("B-1", "Team-Beta", hh={"Архитектор решений": 300}, rung=80)]
+    engineers = [{"engineer_id": "ENG-418", "team_id": "Team-Platform", "role": "Архитектор решений",
+                  "capacity_rate": 1.0}]
+    alerts = {a.task_id: a for a in check_resource_deficit(save_baseline({"current": current}), engineers)}
+    assert "ENG-418 из Team-Platform (300 ч" in alerts["A-1"].recommendation
+    assert "свободно только 100 ч из нужных 300 ч" in alerts["B-1"].recommendation
 
 
 # --- отложена, хотя роли есть ---------------------------------------------------
@@ -77,7 +98,7 @@ def test_capacity_alert_for_task_postponed_with_all_roles_staffed():
                   "capacity_rate": 1.0}]
     alerts = check_resource_deficit(save_baseline({"current": current}), engineers)
     capacity = next(a for a in alerts if a.category == "capacity")
-    assert capacity.task_id == "AI-302" and "все нужные роли в Team-L есть" in capacity.description
+    assert capacity.task_id == "AI-302" and "все нужные роли в компании есть" in capacity.description
     assert "свободно только 0 ч" in capacity.recommendation
 
 
@@ -257,5 +278,6 @@ def test_no_silent_postponements_on_real_dataset():
 
 def test_run_quarter_has_roadmap_and_summary():
     report = run_quarter("vacation", until_sprint=3)
-    assert report["hiring_roadmap"] and report["hiring_roadmap"][0]["gain_tasks"] > 0
+    step = report["hiring_roadmap"][0]
+    assert step["gain_tasks"] + step["gain_full"] > 0
     assert report["quarter_summary"]["mode"] == "forecast"

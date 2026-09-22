@@ -154,7 +154,7 @@ def test_fact_for_unknown_or_closed_task_becomes_warning():
     assert len(plan["warnings"]) == 2
 
 
-def test_unavailable_engineer_is_removed_from_capacity():
+def test_unavailable_engineer_keeps_role_but_has_zero_capacity():
     seen = {}
 
     def spy(tasks, capacity, dependencies, engineers, **kwargs):
@@ -166,7 +166,8 @@ def test_unavailable_engineer_is_removed_from_capacity():
     apply_sprint_fact(plan, {"engineers_unavailable": ["ENG-1"]},
                       **{**KW, "engineers": engineers, "planner": spy})
     assert seen["capacity"]["engineer_hh"]["ENG-1"] == 0
-    assert seen["engineers"] == []
+    [eng] = seen["engineers"]
+    assert eng["engineer_id"] == "ENG-1" and eng["capacity_rate"] == 0.0 and eng["unavailable"]
     assert CAPACITY["engineer_hh"]["ENG-1"] == 80.0
 
 

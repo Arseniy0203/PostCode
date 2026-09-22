@@ -17,6 +17,7 @@ from backend.recalculation.plan_fields import (
     field,
     is_done,
     is_included,
+    normalize_role,
     remaining_hh,
     start_sprint,
     task_id,
@@ -28,24 +29,25 @@ from backend.risk.alerts import role_supply, dependency_graph, downstream
 SCENARIOS: dict[str, str] = {
     "on_track": "Всё по плану: каждая задача закрывается в свой плановый спринт.",
     "key_task_delay": (
-        "Задержка ключевой задачи: задача, от которой зависит больше всего других, "
-        "в спринте-триггере сделана только наполовину."
+        "Задержка ключевой задачи: задача, от которой зависит больше всего задач плана, "
+        "в спринте-триггере не продвинулась (или сделана наполовину, если должна была "
+        "закрыться) — видно, как сдвигается цепочка."
     ),
     "engineer_leave": (
-        "Уход инженера: самый загруженный по плану инженер недоступен "
-        "со следующего спринта после триггера."
+        "Уход инженера: уходит единственный в компании носитель роли, у которого есть "
+        "работа в плане (риск Bus Factor = 1); если таких нет — самый загруженный."
     ),
     "early_finish": (
         "Закрыли раньше срока: самая длинная из идущих задач закрыта в спринте-триггере, "
         "освободившаяся ёмкость уходит на хвост."
     ),
     "hire_role": (
-        "Найм: в команду нанят инженер роли, из-за отсутствия которой перенесено "
-        "больше всего часов; выходит со следующего спринта после триггера."
+        "Найм: нанят инженер роли, которой нет в компании и из-за которой отложено "
+        "больше всего часов; выходит со следующего спринта, первые спринты — адаптация."
     ),
     "vacation": (
-        "Отпуск: самый загруженный по плану инженер отсутствует 2 спринта после "
-        "триггера и возвращается."
+        "Отпуск: единственный носитель роли (или самый загруженный инженер) "
+        "отсутствует 2 спринта после триггера и возвращается."
     ),
     "defer_task": (
         "Перенос в следующий квартал: руководитель переносит ещё не начатую задачу "
@@ -88,19 +90,28 @@ def planned_fact(plan: dict[str, Any], sprint: int, engineers: list[dict[str, An
 
 
 def pick_key_task(plan: dict[str, Any], sprint: int, dependencies: list[dict[str, Any]]) -> str | None:
-    """Активная в спринте задача с самой длинной цепочкой зависимых задач."""
+    """Задача для задержки: каскад должен быть виден.
+
+    Приоритет — задача, от которой зависит больше всего задач, стоящих в плане
+    (сдвиг отложенных задач никто не заметит), затем — задача, которая по плану
+    закрывается в этом спринте, затем приоритет инициативы.
+    """
     active = [t for t in plan["current"] if _active(t, sprint)]
     if not active:
         return None
-    children, _ = dependency_graph(dependencies, {task_id(t) for t in plan["current"]})
+    by_id = {task_id(t): t for t in plan["current"]}
+    children, _ = dependency_graph(dependencies, set(by_id))
 
-    def weight(task: Any) -> tuple[int, float]:
-        return len(downstream(children, task_id(task))), float(field(task, "rung", default=0) or 0)
+    def weight(task: Any) -> tuple[int, int, float]:
+        planned_chain = [c for c in downstream(children, task_id(task))
+                         if is_included(by_id[c]) and not is_done(by_id[c])]
+        return (len(planned_chain), int(end_sprint(task) == sprint),
+                float(field(task, "rung", default=0) or 0))
 
     return task_id(max(active, key=weight))
 
 
-def pick_busiest_engineer(plan: dict[str, Any], from_sprint: int) -> str | None:
+def _load_by_engineer(plan: dict[str, Any], from_sprint: int) -> dict[str, float]:
     load: dict[str, float] = defaultdict(float)
     for task in plan["current"]:
         if is_done(task):
@@ -109,6 +120,26 @@ def pick_busiest_engineer(plan: dict[str, Any], from_sprint: int) -> str | None:
             if int(key) >= from_sprint:
                 for eng_id, h in dict(hours).items():
                     load[eng_id] += float(h)
+    return load
+
+
+def pick_busiest_engineer(plan: dict[str, Any], from_sprint: int,
+                          engineers: list[dict[str, Any]] | None = None) -> str | None:
+    """Кого «убрать» в сценариях ухода/отпуска.
+
+    Сначала — единственный в компании носитель роли, у которого есть работа
+    в плане: без него задачи встают, и это видно (риск Bus Factor = 1). Если
+    таких нет — самый загруженный инженер.
+    """
+    load = _load_by_engineer(plan, from_sprint)
+    if engineers:
+        people: dict[str, set[str]] = defaultdict(set)
+        for eng in engineers:
+            people[normalize_role(eng.get("role", ""))].add(str(eng.get("engineer_id")))
+        sole = {next(iter(ids)) for ids in people.values() if len(ids) == 1}
+        loaded_sole = {e: h for e, h in load.items() if e in sole and h > 0}
+        if loaded_sole:
+            return max(loaded_sole, key=loaded_sole.get)
     return max(load, key=load.get) if load else None
 
 
@@ -131,21 +162,42 @@ def pick_defer(plan: dict[str, Any], sprint: int) -> str | None:
 
 
 def pick_hire(plan: dict[str, Any], engineers: list[dict[str, Any]]) -> tuple[str, str] | None:
-    """(команда, роль), из-за отсутствия которой перенесено больше всего часов."""
-    staffed = role_supply([*engineers, *(plan.get("engineers_hired") or [])])
+    """(команда, роль) для найма: роль, которой нет во всей компании и из-за
+    которой отложено больше всего часов, — в команду, где их больше всего.
+
+    Планировщик берёт людей из общего пула, поэтому нанимать роль, которая
+    в компании уже есть, почти бесполезно; такая роль берётся, только если
+    отсутствующих ролей нет.
+    """
+    staff = [*engineers, *(plan.get("engineers_hired") or [])]
+    company = {normalize_role(e.get("role", "")) for e in staff}
+    staffed = role_supply(staff)
+    absent: dict[tuple[str, str], float] = defaultdict(float)
     lost: dict[tuple[str, str], float] = defaultdict(float)
     names: dict[str, str] = {}
     for task in plan["current"]:
-        if is_done(task) or field(task, "decision") != "postponed":
+        if is_done(task) or field(task, "deferred"):
+            continue
+        # Отложенные задачи и задачи с частичной целью (часы ролей без людей).
+        if field(task, "decision") != "postponed" and not field(task, "unstaffed_hh"):
             continue
         for key, (name, hours) in remaining_hh(task).items():
-            if staffed.get((team_id(task), key), 0) == 0:
+            if field(task, "decision") != "postponed" and key in company:
+                continue
+            names.setdefault(key, name)
+            if key not in company:
+                absent[(team_id(task), key)] += hours
+            elif staffed.get((team_id(task), key), 0) == 0:
                 lost[(team_id(task), key)] += hours
-                names.setdefault(key, name)
-    if not lost:
+    pool = absent or lost
+    if not pool:
         return None
-    team, key = max(lost, key=lost.get)
-    return team, names[key]
+    by_role: dict[str, float] = defaultdict(float)
+    for (_, key), hours in pool.items():
+        by_role[key] += hours
+    role = max(by_role, key=by_role.get)
+    team = max((k for k in pool if k[1] == role), key=pool.get)[0]
+    return team, names[role]
 
 
 def hired_engineer(team: str, role: str, plan: dict[str, Any]) -> dict[str, Any]:
@@ -186,12 +238,16 @@ def build_fact(
     if scenario == "key_task_delay":
         tid = target or pick_key_task(plan, sprint, dependencies)
         if tid:
+            task = next((t for t in plan["current"] if task_id(t) == tid), None)
             entry = fact["tasks"].setdefault(tid, {"spent_hh": {}})
             entry["status"] = "InProgress"
-            entry["spent_hh"] = {r: h / 2 for r, h in entry["spent_hh"].items()}
+            # Если задача и так не должна была закрыться в этом спринте, «половина»
+            # — это ровно план; задержка тогда означает, что работа не продвинулась.
+            ends_now = task is not None and end_sprint(task) == sprint
+            entry["spent_hh"] = {r: h / 2 for r, h in entry["spent_hh"].items()} if ends_now else {}
             fact["scenario_target"] = tid
     elif scenario in ("engineer_leave", "vacation"):
-        eng_id = target or pick_busiest_engineer(plan, sprint + 1)
+        eng_id = target or pick_busiest_engineer(plan, sprint + 1, engineers)
         if eng_id:
             fact["engineers_unavailable"] = [eng_id]
             fact["scenario_target"] = eng_id

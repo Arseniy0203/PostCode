@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import copy
 
+import pytest
+
 from backend.recalculation.baseline import save_baseline
 from backend.recalculation.next_quarter import next_quarter_backlog
 from backend.recalculation.pipeline import build_week0, load_dataset, run_quarter
@@ -30,12 +32,31 @@ def test_duration_uses_biggest_role_one_person_each():
     assert duration_sprints(_t("X", "T", {})) == 1
 
 
+def test_duration_accounts_for_onboarding_ramp():
+    task = _t("X", "T", {"Java": 160})
+    assert duration_sprints(task) == 2                     # опытный: 80 + 80
+    assert duration_sprints(task, (0.5, 0.75)) == 3        # новичок: 40 + 60 + 80
+
+
 def test_hire_fits_early_but_not_late_in_quarter():
-    task = _t("X", "T", {"Java": 160})              # 2 спринта → начать не позже 5-го
-    assert task_timing(task, "hire", now=0) == {"task_id": "X", "kind": "hire",
-                                                 "ready": 4, "latest": 5, "fits": True}
-    assert task_timing(task, "hire", now=2)["fits"] is False    # выйдет к 6-му
-    assert task_timing(task, "borrow", now=2)["fits"] is True   # переключение — к 4-му
+    task = _t("X", "T", {"Java": 160})              # новичку 3 спринта → начать не позже 4-го
+    assert task_timing(task, "hire", now=0) == {"task_id": "X", "kind": "hire", "ready": 4,
+                                                 "latest": 4, "duration": 3, "split": False,
+                                                 "fits": True}
+    assert task_timing(task, "hire", now=0, oversized=True)["fits"] is False
+    assert task_timing(task, "hire", now=1)["fits"] is False    # выйдет к 5-му
+    assert task_timing(task, "borrow", now=2)["fits"] is True   # переключение — к 4-му, 60+80+80
+
+
+def test_hired_engineer_capacity_uses_average_ramp():
+    from backend.recalculation.recalc import active_resources
+
+    hired = {"H": {"engineer_id": "H", "team_id": "T", "role": "Java", "capacity_rate": 1.0,
+                   "joined_sprint": 2}}
+    _, capacity = active_resources([], {"engineer_hh": {}}, set(), hired, first_sprint=2)
+    assert capacity["engineer_hh"]["H"] == pytest.approx(80 * (0.5 + 0.75 + 1 + 1 + 1) / 5, abs=0.1)
+    _, later = active_resources([], {"engineer_hh": {}}, set(), hired, first_sprint=4)
+    assert later["engineer_hh"]["H"] == 80.0
 
 
 def test_hiring_alert_marks_tasks_to_defer_when_hire_is_too_late():
