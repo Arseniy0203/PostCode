@@ -278,7 +278,7 @@ def _render_recommendations(recs: dict[str, Any]) -> None:
                              "Команда": ", ".join(cand.get("teams") or [])})
     if rows:
         with st.expander(f"Все варианты переобучения по смежным специальностям · {len(rows)}"):
-            st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+            st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
             st.caption("Кандидат подходит, если у него смежная роль (например, «Аналитик» → "
                        "«Аналитик 1С»), уже есть ключевой стек роли или общие навыки с "
                        "единственным носителем. Первым в каждой роли идёт лучший вариант.")
@@ -308,6 +308,6 @@ def _render_team_bus_factor(teams: dict[str, Any]) -> None:
         "Часов в плане": round(r.get("hours") or 0),
         "Задач": len(r.get("tasks") or []),
     } for r in rows])
-    st.dataframe(table, hide_index=True, use_container_width=True)
+    st.dataframe(table, hide_index=True, width="stretch")
     st.caption("Роль — строка без скобок; технология роли — в скобках. «Зависим от других "
                "команд» — в команде носителей нет, планировщик привлекает людей извне.")

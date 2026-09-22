@@ -155,5 +155,5 @@ Bus Factor = число людей, владеющих компетенцией 
 
 - Матвей — данные и планировщик (`backend/ingestion`, `backend/planning`)
 - Арсений — пересчёт, риски, KPI (`backend/recalculation`, `backend/risk`)
-- Мишган — звёздная карта и объяснимость (`backend/starmap`, `backend/explainability`)
-- Рома — интерфейс и тестирование (`frontend`, `tests`)
+- Михаил — звёздная карта и объяснимость (`backend/starmap`, `backend/explainability`)
+- Роман — интерфейс и тестирование (`frontend`, `tests`)
