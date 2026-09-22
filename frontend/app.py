@@ -395,9 +395,9 @@ def render_fact_uploads(master: dict[str, Any]) -> None:
         sprint, name, data = pending
         st.sidebar.warning(f"{_file_sprint_mismatch(name, sprint)} Файл «{name}» пока не применён.")
         col_yes, col_no = st.sidebar.columns(2)
-        if col_yes.button("Всё равно загрузить", key="pending_yes", use_container_width=True):
+        if col_yes.button("Всё равно загрузить", key="pending_yes", width="stretch"):
             _accept_fact(sprint, (name, data), master, confirmed=True)
-        if col_no.button("Отмена", key="pending_no", use_container_width=True):
+        if col_no.button("Отмена", key="pending_no", width="stretch"):
             st.session_state.pop("pending_fact", None)
             st.rerun()
 
@@ -407,11 +407,11 @@ def render_fact_uploads(master: dict[str, Any]) -> None:
             with st.sidebar.expander(f"Спринт {i} · факт загружен", expanded=False):
                 st.caption(name)
                 col_replace, col_delete = st.columns(2)
-                if col_replace.button("Заменить", key=f"replace_btn_{i}", use_container_width=True,
+                if col_replace.button("Заменить", key=f"replace_btn_{i}", width="stretch",
                                       help="Загрузить другой файл факта за этот спринт"):
                     st.session_state[f"replace_{i}"] = not st.session_state.get(f"replace_{i}", False)
                     st.rerun()
-                if col_delete.button("Удалить", key=f"delete_btn_{i}", use_container_width=True,
+                if col_delete.button("Удалить", key=f"delete_btn_{i}", width="stretch",
                                      help="Убрать факт этого спринта и всех следующих"):
                     for j in range(i, 7):
                         plans.pop(j, None)
@@ -549,7 +549,7 @@ def main() -> None:
 
     with st.sidebar.expander("Мастер-датасет · Неделя 0", expanded=False):
         st.caption(st.session_state.get("master_name") or "Датасет загружен.")
-        if st.button("Сбросить весь план и начать заново", use_container_width=True):
+        if st.button("Сбросить весь план и начать заново", width="stretch"):
             st.session_state.calculated_plans = {}
             st.session_state.master_dataset = None
             st.session_state.fact_files = {}

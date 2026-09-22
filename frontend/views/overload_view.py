@@ -103,7 +103,7 @@ def render_overload_view(overload: dict[str, Any] | None) -> None:
                "крупные задачи по спринтам пропорционально часам и ставит их в очередь по "
                "скорингу и зависимостям — загрузка каждого спринта не выше ёмкости "
                "(пунктир — 100%).")
-    st.altair_chart(_team_chart(overload["teams"]), use_container_width=True)
+    st.altair_chart(_team_chart(overload["teams"]), width="stretch")
 
     st.subheader("Роли: часы")
     missing = [r for r in overload["roles"] if not r["fund_sprint_hh"]]
@@ -121,7 +121,7 @@ def render_overload_view(overload: dict[str, Any] | None) -> None:
                    + ("За квартал фонда хватает всем — поэтому работа идёт очередью, а не разом."
                       if not over_quarter else
                       "Даже за квартал не хватает фонда: " + ", ".join(over_quarter) + "."))
-        st.altair_chart(_role_chart(staffed), use_container_width=True)
+        st.altair_chart(_role_chart(staffed), width="stretch")
 
     with st.expander("Как план разложил нагрузку по спринтам"):
         load = pd.DataFrame(overload.get("plan_load") or [])
@@ -131,15 +131,17 @@ def render_overload_view(overload: dict[str, Any] | None) -> None:
                 x=alt.X("Спринт:N", title=None, sort=[f"Спринт {i}" for i in range(1, 7)],
                         axis=alt.Axis(labelAngle=0, orient="top")),
                 y=alt.Y("team_id:N", title=None, axis=alt.Axis(labelLimit=200)),
+                # Длина шкалы по умолчанию (200px) выше самой карты — подпись «0» обрезалась
                 color=alt.Color("pct:Q", title="Загрузка, %",
-                                scale=alt.Scale(domain=[0, 100], range=["#EEF2FB", COLOR_PLAN])),
+                                scale=alt.Scale(domain=[0, 100], range=["#EEF2FB", COLOR_PLAN]),
+                                legend=alt.Legend(values=[0, 50, 100], gradientLength=120)),
                 tooltip=[alt.Tooltip("team_id:N", title="Команда"), "Спринт",
                          alt.Tooltip("sp:Q", title="SP"), alt.Tooltip("pct:Q", title="Загрузка, %")],
             )
             text = heat.mark_text(fontSize=11).encode(
                 text=alt.Text("pct:Q", format=".0f"),
                 color=alt.condition(alt.datum.pct > 60, alt.value("#FFFFFF"), alt.value("#111827")))
-            st.altair_chart((heat + text).properties(height=alt.Step(30)), use_container_width=True)
+            st.altair_chart((heat + text).properties(height=alt.Step(30)), width="stretch")
             st.caption("Процент ёмкости команды по SP в каждом спринте плана Недели 0.")
             idle = sorted(load.loc[(load["sprint"] == load["sprint"].max()) & (load["pct"] == 0),
                                    "team_id"].unique())
