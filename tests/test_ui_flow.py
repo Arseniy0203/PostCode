@@ -74,10 +74,10 @@ def test_upload_replace_delete_and_all_pages() -> None:
 
     at.sidebar.selectbox[0].set_value("План (PI-цикл)")
     at.run()
-    picker = next(s for s in at.selectbox if "карточки" in s.label)
+    # Карточка раскрывается прямо в сетке спринтов: у каждой задачи свой блок,
+    # искать её в отдельном списке не нужно.
+    labels = [e.label for e in at.expander]
     for task_id in ("SRV-4043", "AI-303", "SRV-4042", "ONK-2475"):
-        picker.set_value(next(o for o in picker.options if o.startswith(task_id)))
-        at.run()
-        assert not at.exception, (task_id, [e.value for e in at.exception])
-        text = " ".join(str(m.value) for m in at.markdown)
-        assert "POSTPONED" not in text and "INCLUDED" not in text
+        assert any(label.startswith(task_id) for label in labels), (task_id, labels[:5])
+    text = " ".join(str(m.value) for m in at.markdown)
+    assert "POSTPONED" not in text and "INCLUDED" not in text

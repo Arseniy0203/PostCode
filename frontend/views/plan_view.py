@@ -102,26 +102,13 @@ def render_plan_view(plan: dict[str, Any], view_mode_label: str) -> None:
 
     st.markdown("---")
 
-    # --- Выбор задачи для детального просмотра ---
-    task_mapping = {f"{t['task_id']} ({t.get('summary', 'Без названия')})": t for t in filtered_tasks}
-
-    st.markdown("### Детальная информация по задаче")
-    selected_task_label = st.selectbox(
-        "Выберите задачу для просмотра карточки и объяснения решения:",
-        options=["-- Не выбрано --"] + list(task_mapping.keys())
-    )
-
-    if selected_task_label != "-- Не выбрано --":
-        render_task_card(task_mapping[selected_task_label])
-
-    st.markdown("---")
-
     # --- Сетка спринтов ---
     st.markdown("### Распределение по спринтам")
+    st.caption("Нажмите на задачу, чтобы раскрыть карточку с причиной решения.")
 
 
     # Группировка задач
-    sprint_groups: dict[int, list] = {i: [] for i in range(1, 8)}
+    sprint_groups: dict[int, list] = {i: [] for i in range(1, 9)}
 
     for t in filtered_tasks:
         # planned_start в датасете — старая дата; спринт квартала — planned_start_sprint
@@ -131,13 +118,16 @@ def render_plan_view(plan: dict[str, Any], view_mode_label: str) -> None:
         elif isinstance(start_sprint, int) and 1 <= start_sprint <= 6:
             # Если задача растянута, показываем её в спринте старта
             sprint_groups[start_sprint].append(t)
-        elif t.get("status") != "Done":
-            # Done до квартала — история, в сетку спринтов не попадает
+        elif t.get("status") == "Done":
+            # Закрыто до Недели 0: в план квартала не входит, но карточка нужна
+            sprint_groups[8].append(t)
+        else:
             sprint_groups[7].append(t)
 
     # Вкладки для 6 спринтов + 1 для перенесённых/отменённых, в названии — число задач
     tabs = st.tabs([f"Спринт {i} · {len(sprint_groups[i])}" for i in range(1, 7)]
-                   + [f"Перенесённые / отменённые · {len(sprint_groups[7])}"])
+                   + [f"Перенесённые / отменённые · {len(sprint_groups[7])}",
+                      f"Закрыты до квартала · {len(sprint_groups[8])}"])
 
     # Отрисовка задач в соответствующих вкладках
     for i, tab in enumerate(tabs):
@@ -145,10 +135,14 @@ def render_plan_view(plan: dict[str, Any], view_mode_label: str) -> None:
         with tab:
             tasks_in_sprint = sprint_groups.get(sprint_idx, [])
             if not tasks_in_sprint:
-                st.info("Нет задач в этом спринте.")
+                st.caption("Нет задач." if sprint_idx > 6 else "Нет задач в этом спринте.")
                 continue
+            if sprint_idx == 8:
+                st.caption("Выполнены до Недели 0: в обязательства квартала не входят "
+                           "и в знаменатель KPI не попадают.")
 
-            # Выводим задачи компактными карточками
+            # Задача раскрывается на месте: карточка появляется прямо в спринте,
+            # искать её в отдельном списке не нужно.
             for t in tasks_in_sprint:
                 color = get_status_color(t.get("status", ""), t.get("decision", ""))
                 sp = t.get("estimation_sp") or 0
@@ -157,13 +151,18 @@ def render_plan_view(plan: dict[str, Any], view_mode_label: str) -> None:
                 if t.get("reason_code") == "PARTIAL_TARGET":
                     decision += " · частичная цель"
                 status = STATUS_LABELS.get(t.get("status"), t.get("status", ""))
+                summary = t.get("summary") or "Без названия"
 
+                # Цвет статуса — левая граница самого блока задачи. Отдельная
+                # полоса над expander съезжала при переносе длинных заголовков.
+                key = f"task-{t.get('task_id')}-{sprint_idx}"
                 st.markdown(
-                    f"""
-                    <div style="border-left: 3px solid {color}; padding: 10px 14px; margin-bottom: 8px; background: #F7F8FA; border-radius: 4px;">
-                        <strong>{t.get('task_id')}</strong> | {t.get('team_id', 'Unassigned')} | SP: {sp} | {status} | {decision}<br>
-                        <small>{t.get('summary', '')}</small>
-                    </div>
-                    """,
-                    unsafe_allow_html=True
+                    f"<style>.st-key-{key} [data-testid='stExpander'] details "
+                    f"{{border-left: 3px solid {color} !important;}}</style>",
+                    unsafe_allow_html=True,
                 )
+                label = (f"{t.get('task_id')} · {summary} — {t.get('team_id', 'без команды')} · "
+                         f"{sp} SP · {status} · {decision}")
+                with st.container(key=key):
+                    with st.expander(label):
+                        render_task_card(t)
