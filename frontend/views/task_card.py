@@ -33,20 +33,20 @@ def render_task_card(task: dict[str, Any]) -> None:
         st.markdown("---")
 
         # 2. БЛОК ОБЪЯСНИМОСТИ
-        st.markdown("### 🧠 Обоснование решения планировщика")
+        st.markdown("**Обоснование решения**")
 
         if decision == "included":
             msg_type = st.success
-            icon = "✅"
+            icon = "Включено"
         elif decision == "postponed":
             msg_type = st.warning
-            icon = "⏳"
+            icon = "Перенесено"
         elif decision == "cancelled":
             msg_type = st.error
-            icon = "❌"
+            icon = "Отменено"
         else:
             msg_type = st.info
-            icon = "ℹ️"
+            icon = "Решение не принято"
 
         reason_code = task.get("reason_code", "NO_REASON_CODE_PROVIDED")
         reason_detail = task.get("reason_detail", "Подробное описание причины отсутствует.")
@@ -56,7 +56,7 @@ def render_task_card(task: dict[str, Any]) -> None:
         # Вывод математических фактов решения
         reason_facts = task.get("reason_facts", {})
         if reason_facts:
-            with st.expander("📊 Математические факты решения (reason_facts)"):
+            with st.expander("Расчёт, на котором основано решение"):
                 st.json(reason_facts)
 
         st.markdown("---")
@@ -65,7 +65,7 @@ def render_task_card(task: dict[str, Any]) -> None:
         col_labor, col_deps = st.columns(2)
 
         with col_labor:
-            st.markdown("#### 🕒 Трудозатраты (Человеко-часы)")
+            st.markdown("**Трудозатраты, человеко-часы**")
             est_hh = task.get("estimated_hh")
 
             if isinstance(est_hh, dict):
@@ -94,7 +94,7 @@ def render_task_card(task: dict[str, Any]) -> None:
                         st.caption(f"Спринт {s}: {engs}")
 
         with col_deps:
-            st.markdown("#### 🔗 Зависимости")
+            st.markdown("**Зависимости**")
             # Мок логики зависимостей (в реальном приложении подтягивается из графа)
             blocks = task.get("blocks", [])
             blocked_by = task.get("blocked_by", [])

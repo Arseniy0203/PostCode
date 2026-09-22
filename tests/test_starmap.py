@@ -161,3 +161,14 @@ def test_summary_matches_frontend_contract(plan, engineers, estimates) -> None:
     # Фронт ищет носителя по skills_declared профиля — имена должны совпадать.
     skills = {s for e in summary["engineers"] for s in e["skills_declared"]}
     assert {s for s, bf in summary["bus_factors"].items() if bf} & skills
+
+
+def test_missing_competency_lists_its_tasks(plan, engineers, estimates) -> None:
+    """Компетенция без носителей знает, каким задачам плана она нужна."""
+    summary = starmap_summary(plan, engineers, estimates)
+    assert "Руководитель проекта" in summary["missing_competencies"]
+    assert summary["missing_competency_tasks"]["Руководитель проекта"] == ["DB-202"]
+    card = next(c for c in summary["competencies"]
+                if c["competency"] == "Руководитель проекта")
+    assert card["bus_factor"] == 0 and card["is_risk"] is True
+    assert card["linked_task_ids"] == ["DB-202"]

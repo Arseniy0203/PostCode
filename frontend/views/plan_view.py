@@ -22,16 +22,16 @@ def get_status_color(status: str, decision: str) -> str:
         Hex-код цвета.
     """
     if decision == "cancelled":
-        return "#d32f2f"  # Красный
+        return "#B3261E"  # Отменено
     if decision == "postponed":
-        return "#f57c00"  # Оранжевый
+        return "#9A6100"  # Перенесено
 
     status_map = {
-        "Done": "#388e3c",        # Зеленый
-        "InProgress": "#1976d2",  # Синий
-        "ToDo": "#78909c"         # Серо-голубой
+        "Done": "#1B6D45",        # Выполнено
+        "InProgress": "#294DA6",  # В работе
+        "ToDo": "#7A8494"         # В очереди
     }
-    return status_map.get(status, "#9e9e9e")
+    return status_map.get(status, "#9AA3B0")
 
 
 def render_plan_view(plan: dict[str, Any], view_mode_label: str) -> None:
@@ -44,7 +44,7 @@ def render_plan_view(plan: dict[str, Any], view_mode_label: str) -> None:
         plan: Структура Plan (словарь с baseline и current).
         view_mode_label: Строка с названием текущего хронологического среза.
     """
-    st.title(f"📅 Квартальный PI-план ({view_mode_label})")
+    st.title(f"Квартальный план · {view_mode_label}")
 
     # Читаем baseline только если выбран снимок Недели 0
     tasks = plan.get("baseline", []) if "Baseline" in view_mode_label else plan.get("current", [])
@@ -133,7 +133,7 @@ def render_plan_view(plan: dict[str, Any], view_mode_label: str) -> None:
 
                 st.markdown(
                     f"""
-                    <div style="border-left: 5px solid {color}; padding: 10px; margin-bottom: 10px; background-color: rgba(128,128,128,0.1); border-radius: 4px;">
+                    <div style="border-left: 3px solid {color}; padding: 10px 14px; margin-bottom: 8px; background: #F7F8FA; border-radius: 4px;">
                         <strong>{t.get('task_id')}</strong> | {t.get('team_id', 'Unassigned')} | SP: {sp} | {decision}<br>
                         <small>{t.get('summary', '')}</small>
                     </div>

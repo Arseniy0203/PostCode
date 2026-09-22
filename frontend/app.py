@@ -39,121 +39,218 @@ LOGO_PATH = os.getenv("LOGO_PATH", os.path.join("frontend", "assets", "logo_poch
 
 
 def inject_custom_css() -> None:
-    """
-    Инжектирует CSS для стилизации интерфейса в стиле Glassmorphism (Liquid Glass).
-    Форсирует темный цвет текста для предотвращения слияния со светлым фоном
-    в случае активного Dark Mode в браузере/системе.
+    """Инжектирует фирменный стиль: светлая корпоративная тема ПочтаТеха.
+
+    Принципы: белый фон, один акцентный цвет из логотипа (#294DA6), тонкие
+    линии вместо теней и градиентов, табличные цифры в метриках и таблицах.
     """
     st.markdown(
         """
         <style>
-        /* Скрытие дефолтного меню и футера, но оставляем header для кнопки сайдбара */
-        #MainMenu {visibility: hidden;}
-        footer {visibility: hidden;}
-        
-        /* Делаем фон хедера прозрачным */
-        header {background-color: transparent !important;}
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-        /* Корпоративный фон (мягкий градиент от светло-синего к белому) */
+        :root {
+            --brand: #294DA6;          /* синий из логотипа «почтатех» */
+            --brand-dark: #1D3876;
+            --brand-tint: #EEF2FB;
+            --ink: #111827;            /* основной текст */
+            --ink-muted: #5B6472;      /* подписи и пояснения */
+            --line: #E4E7EC;           /* границы и разделители */
+            --surface: #FFFFFF;
+            --surface-alt: #F7F8FA;    /* сайдбар, шапки таблиц */
+            --danger: #B3261E;
+            --warning: #9A6100;
+            --success: #1B6D45;
+        }
+
+        #MainMenu, footer {visibility: hidden;}
+        header {background: transparent !important;}
+
+        html, body, .stApp, [class*="css"] {
+            font-family: 'Inter', -apple-system, 'Segoe UI', sans-serif;
+            font-feature-settings: 'tnum' 1, 'cv05' 1;
+        }
+
         .stApp {
-            background: linear-gradient(135deg, #e3f2fd 0%, #ffffff 100%);
-            background-attachment: fixed;
+            background: var(--surface);
+            color: var(--ink);
         }
 
-        /* =========================================
-           ФОРСИРОВАНИЕ ТЕМНОГО ТЕКСТА (Анти-DarkMode) 
-           ========================================= */
-        .stApp, .stApp p, .stApp span, .stApp label, .stApp li, .stApp div {
-            color: #1e293b !important; /* Глубокий серо-синий для основного текста */
+        .block-container {
+            padding-top: 2.75rem;
+            padding-bottom: 4rem;
+            max-width: 1360px;
         }
 
-        h1, h2, h3, h4, h5, h6 {
-            color: #003366 !important; /* Корпоративный синий ПочтаТеха */
+        /* --- Типографика: заголовки сдержанные, без «плакатности» --- */
+        h1 {
+            font-size: 1.75rem !important;
+            font-weight: 600 !important;
+            letter-spacing: -0.02em;
+            color: var(--ink) !important;
+            margin-bottom: 0.25rem !important;
+        }
+        h2 {
+            font-size: 1.15rem !important;
+            font-weight: 600 !important;
+            color: var(--ink) !important;
+            letter-spacing: -0.01em;
+        }
+        h3, h4, h5, h6 {
+            font-size: 0.95rem !important;
+            font-weight: 600 !important;
+            color: var(--ink) !important;
+        }
+        .stApp p, .stApp li, .stApp span, .stApp label, .stApp div {
+            color: var(--ink);
+        }
+        .stCaption, [data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] p {
+            color: var(--ink-muted) !important;
+            font-size: 0.8rem !important;
         }
 
-        /* Заголовки экспандеров, вкладки (tabs) и значения метрик */
-        .streamlit-expanderHeader, button[data-baseweb="tab"] p, div[data-testid="stMetricValue"] > div {
-            color: #003366 !important;
+        /* Надзаголовок раздела: мелкие прописные, как в отчётах */
+        .section-label {
+            font-size: 0.72rem;
+            font-weight: 600;
+            letter-spacing: 0.09em;
+            text-transform: uppercase;
+            color: var(--ink-muted);
+            margin-bottom: 0.6rem;
         }
-        /* ========================================= */
 
-        /* ========================================= */
+        /* --- Метрики: плоские карточки с тонкой рамкой --- */
+        div[data-testid="stMetric"] {
+            background: var(--surface);
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            padding: 1.1rem 1.25rem;
+        }
+        div[data-testid="stMetricLabel"] p {
+            font-size: 0.78rem !important;
+            font-weight: 500 !important;
+            letter-spacing: 0.02em;
+            color: var(--ink-muted) !important;
+        }
+        div[data-testid="stMetricValue"] {
+            font-size: 2rem !important;
+            font-weight: 600 !important;
+            letter-spacing: -0.03em;
+            color: var(--ink) !important;
+        }
+        div[data-testid="stMetricValue"] > div {color: var(--ink) !important;}
+        div[data-testid="stMetricDelta"] {font-size: 0.78rem !important;}
+        div[data-testid="stMetricDelta"] svg {display: none;}
 
-        /* Стилизация Glassmorphism для карточек (только метрики, экспандеры и контейнеры с рамкой) */
-        div[data-testid="stMetric"],
+        /* --- Контейнеры и раскрывающиеся блоки --- */
         div[data-testid="stExpander"],
         div[data-testid="stVerticalBlockBorderWrapper"] {
-            background: rgba(255, 255, 255, 0.7) !important;
-            backdrop-filter: blur(12px) !important;
-            -webkit-backdrop-filter: blur(12px) !important;
-            border: 1px solid rgba(255, 255, 255, 0.8) !important;
-            border-radius: 16px !important;
-            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07) !important;
-            padding: 1rem;
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            background: var(--surface);
+            border: 1px solid var(--line) !important;
+            border-radius: 6px !important;
+            box-shadow: none !important;
+        }
+        div[data-testid="stExpander"] summary {
+            font-size: 0.88rem;
+            font-weight: 500;
         }
 
-        /* Анимация при наведении */
-        div[data-testid="stMetric"]:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 12px 40px 0 rgba(31, 38, 135, 0.12) !important;
-        }
-
-        /* Полупрозрачный сайдбар с темным текстом */
+        /* --- Сайдбар --- */
         [data-testid="stSidebar"] {
-            background: rgba(255, 255, 255, 0.5) !important;
-            backdrop-filter: blur(15px);
-            border-right: 1px solid rgba(255, 255, 255, 0.6);
+            background: var(--surface-alt) !important;
+            border-right: 1px solid var(--line);
         }
+        [data-testid="stSidebar"] .block-container {padding-top: 1.5rem;}
+        [data-testid="stSidebar"] h1,
+        [data-testid="stSidebar"] h2,
+        [data-testid="stSidebar"] h3 {
+            font-size: 0.72rem !important;
+            font-weight: 600 !important;
+            letter-spacing: 0.09em;
+            text-transform: uppercase;
+            color: var(--ink-muted) !important;
+        }
+        [data-testid="stSidebar"] p,
+        [data-testid="stSidebar"] span,
+        [data-testid="stSidebar"] label {color: var(--ink) !important;}
 
-        [data-testid="stSidebar"] p, [data-testid="stSidebar"] span, [data-testid="stSidebar"] label {
-            color: #1e293b !important;
-        }
-
-        /* Стилизация зоны drag-and-drop file_uploader */
-        [data-testid="stFileUploader"] > section {
-            background: rgba(255, 255, 255, 0.6) !important;
-            backdrop-filter: blur(10px) !important;
-            border: 2px dashed rgba(0, 51, 102, 0.4) !important;
-            border-radius: 16px !important;
-            box-shadow: 0 4px 15px rgba(31, 38, 135, 0.05) !important;
-            transition: all 0.3s ease;
-        }
-        [data-testid="stFileUploader"] > section:hover {
-            background: rgba(255, 255, 255, 0.9) !important;
-            border-color: rgba(0, 51, 102, 0.8) !important;
-        }
-
-        /* 1. Синий фон для всех кнопок и иконки-подсказки (?) */
+        /* --- Кнопки: один акцент, без градиентов --- */
+        .stButton > button,
         [data-testid="stFileUploader"] button,
-        [data-testid="stTooltipIcon"] {
-            background-color: #003366 !important;
-            border: none !important;
+        [data-testid="stFormSubmitButton"] button {
+            background: var(--brand) !important;
+            color: #FFFFFF !important;
+            border: 1px solid var(--brand) !important;
+            border-radius: 5px !important;
+            font-weight: 500 !important;
+            font-size: 0.85rem !important;
+            box-shadow: none !important;
+            transition: background 0.15s ease;
         }
-
-        /* 2. Белый цвет текста и иконок внутри синих кнопок */
-        [data-testid="stFileUploader"] button *,
-        [data-testid="stTooltipIcon"] * {
-            color: #ffffff !important;
-            fill: #ffffff !important;
-        }
-        
+        .stButton > button *,
+        [data-testid="stFileUploader"] button * {color: #FFFFFF !important; fill: #FFFFFF !important;}
+        .stButton > button:hover,
         [data-testid="stFileUploader"] button:hover {
-            background-color: #001f3f !important;
+            background: var(--brand-dark) !important;
+            border-color: var(--brand-dark) !important;
         }
+        [data-testid="stTooltipIcon"] {background: transparent !important;}
+        [data-testid="stTooltipIcon"] * {fill: var(--ink-muted) !important;}
 
-        /* 3. Обычный текст (имена файлов, размер, "Drag and drop") остается темным */
+        /* --- Загрузка файла --- */
+        [data-testid="stFileUploader"] > section {
+            background: var(--surface-alt) !important;
+            border: 1px dashed var(--line) !important;
+            border-radius: 6px !important;
+            box-shadow: none !important;
+        }
+        [data-testid="stFileUploader"] > section:hover {border-color: var(--brand) !important;}
         [data-testid="stFileUploaderDropzoneInstructions"] span,
         [data-testid="stFileUploaderDropzoneInstructions"] small,
-        [data-testid="stFileInfo"] p,
-        [data-testid="stFileInfo"] small,
-        [data-testid="stFileInfo"] span {
-            color: #1e293b !important;
+        [data-testid="stFileInfo"] p, [data-testid="stFileInfo"] small,
+        [data-testid="stFileInfo"] span {color: var(--ink-muted) !important;}
+
+        /* --- Таблицы: плотные, с тонкой сеткой --- */
+        [data-testid="stDataFrame"] {border: 1px solid var(--line); border-radius: 6px;}
+        [data-testid="stDataFrame"] * {font-size: 0.84rem;}
+
+        /* --- Вкладки --- */
+        button[data-baseweb="tab"] {
+            font-size: 0.86rem !important;
+            font-weight: 500 !important;
         }
+        button[data-baseweb="tab"] p {color: var(--ink-muted) !important;}
+        button[data-baseweb="tab"][aria-selected="true"] p {color: var(--brand) !important;}
+        div[data-baseweb="tab-highlight"] {background: var(--brand) !important;}
+
+        /* --- Уведомления: тонкая цветная полоса слева вместо заливки --- */
+        div[data-testid="stAlert"] {
+            border-radius: 5px;
+            border: 1px solid var(--line);
+            border-left: 3px solid var(--brand);
+            background: var(--surface-alt);
+            box-shadow: none;
+        }
+        div[data-testid="stAlert"] p {font-size: 0.86rem;}
+
+        /* --- Радио и селект --- */
+        div[role="radiogroup"] label p {font-size: 0.86rem !important;}
+        div[data-baseweb="select"] > div {
+            border-radius: 5px !important;
+            border-color: var(--line) !important;
+            font-size: 0.86rem;
+        }
+
+        hr, [data-testid="stDivider"] {border-color: var(--line) !important;}
         </style>
         """,
         unsafe_allow_html=True
     )
+
+
+def section_label(text: str) -> None:
+    """Надзаголовок раздела мелкими прописными — вместо эмодзи-иконок."""
+    st.markdown(f'<div class="section-label">{text}</div>', unsafe_allow_html=True)
 
 
 @st.cache_data(show_spinner="Сборка Baseline и проверка рисков...")
@@ -285,8 +382,8 @@ def init_session_state() -> None:
 
 def render_kpi_widgets(baseline_tasks: list[dict[str, Any]], current_tasks: list[dict[str, Any]]) -> None:
     """Отрисовывает виджеты KPI в шапке приложения."""
-    st.subheader("Квартальные KPI")
-    st.caption("ℹ️ *Знаменатель обеих метрик зафиксирован на Неделе 0 в Baseline и строго неизменен.*")
+    section_label("Квартальные показатели")
+    st.caption("Знаменатель обеих метрик зафиксирован на Неделе 0 и не меняется при пересчёте.")
 
     if not baseline_tasks:
         st.info("Baseline пуст. Ожидание данных для расчета KPI.")
@@ -332,12 +429,12 @@ def main() -> None:
     if os.path.exists(LOGO_PATH):
         st.sidebar.image(LOGO_PATH, width="stretch")
 
-    st.sidebar.title("🧭 Навигация и Данные")
+    st.sidebar.markdown("### Данные и навигация")
 
     # СОСТОЯНИЕ 0: Мастер-датасет не загружен
     if "baseline" not in st.session_state.calculated_plans:
-        st.title("📥 Инициализация квартала (Неделя 0)")
-        st.info("Приложение находится в Состоянии 0. Для начала работы загрузите базовый план.")
+        st.title("Инициализация квартала")
+        st.caption("Загрузите мастер-датасет, чтобы построить план квартала, риски и звёздную карту.")
 
         uploaded_file = st.file_uploader(
             "Загрузите Master-датасет (.xlsx)",
@@ -356,15 +453,15 @@ def main() -> None:
                 }
                 st.rerun()
             except Exception as e:
-                st.error("❌ Критическая ошибка: Неверный формат Master-датасета.")
+                st.error("Не удалось прочитать мастер-датасет: неверный формат файла.")
                 with st.expander("Технические детали"):
                     st.code(str(e))
         return  # Полная блокировка остального UI до загрузки Мастера
 
     # СОСТОЯНИЕ 1-6: Пайплайн загрузки спринтов в Сайдбаре
-    st.sidebar.markdown("### 🗂 Загрузка данных")
+    st.sidebar.markdown("### Загрузка данных")
 
-    with st.sidebar.expander("✅ Мастер-датасет (Неделя 0)", expanded=False):
+    with st.sidebar.expander("Мастер-датасет · Неделя 0", expanded=False):
         if st.button("Сбросить весь план и начать заново", use_container_width=True):
             st.session_state.calculated_plans = {}
             st.session_state.master_dataset = None
@@ -375,7 +472,7 @@ def main() -> None:
     for i in range(1, 7):
         # Если спринт уже загружен
         if i in st.session_state.calculated_plans:
-            with st.sidebar.expander(f"✅ Спринт {i} (Факт загружен)", expanded=False):
+            with st.sidebar.expander(f"Спринт {i} · факт загружен", expanded=False):
                 st.success(f"Данные за Спринт {i} учтены в плане.")
                 new_fact = st.file_uploader(f"Перезалить факт Спринта {i}", type=["xlsx"], key=f"reupload_fact_{i}")
                 if new_fact:
@@ -409,13 +506,13 @@ def main() -> None:
                     st.session_state.calculated_plans[i] = new_state
                     st.rerun()
                 except Exception as e:
-                    st.sidebar.error("❌ Ошибка пересчета: Неверный формат файла.")
+                    st.sidebar.error("Не удалось пересчитать план: неверный формат файла.")
             break  # Останавливаем цикл, чтобы не показывать загрузчики для N+2
 
     st.sidebar.markdown("---")
 
     # НАВИГАЦИЯ (Выбор текущего хронологического среза)
-    st.sidebar.markdown("### 👁 Режим просмотра")
+    st.sidebar.markdown("### Режим просмотра")
 
     options = {"baseline": "Снимок (Baseline Неделя 0)"}
     for i in range(1, 7):
@@ -437,7 +534,7 @@ def main() -> None:
     page = st.sidebar.selectbox("Раздел", options=["План (PI-цикл)", "Риски и Алерты", "Звёздная карта"])
 
     st.sidebar.markdown("---")
-    st.sidebar.info("Команда: Кронверкские псы\n\nХакатон: ПочтаТех")
+    st.sidebar.caption("Кронверкские псы · хакатон ПочтаТех")
 
     # РЕНДЕР ИНТЕРФЕЙСА
     active_state = st.session_state.calculated_plans[selected_key]

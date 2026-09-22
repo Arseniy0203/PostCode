@@ -17,7 +17,7 @@ def render_risk_view(alerts: list[Any]) -> None:
     st.header("Дашборд рисков и алертов")
 
     if not alerts:
-        st.success("✅ Рисков не обнаружено! Все задачи идут по графику.")
+        st.success("Рисков не обнаружено: план идёт по графику.")
         return
 
     red_alerts = [a for a in alerts if a.get("type") == "red"]
@@ -31,7 +31,7 @@ def render_risk_view(alerts: list[Any]) -> None:
     col2.metric("Затронутые PRODF-цели", affected_prodfs)
 
     st.subheader("Детализация алертов")
-    tabs = st.tabs(["🔴 Критические (Red)", "🟡 Каскадные (Yellow)", "🟠 Ресурсные (Orange)"])
+    tabs = st.tabs(["Критические", "Каскадные", "Ресурсные"])
 
     def _render_alert_card(alert: dict[str, Any], render_func: Any) -> None:
         prodf = alert.get("prodf_id_at_risk", "Неизвестно")
@@ -40,12 +40,12 @@ def render_risk_view(alerts: list[Any]) -> None:
         desc = alert.get("description", "Описание отсутствует")
         rec = alert.get("recommendation", "")
 
-        render_func(f"### 🎯 PRODF: {prodf}\n"
-                    f"**Спринт обнаружения:** {sprint} | **Источник:** {task_id}\n\n"
-                    f"{desc}\n\n"
-                    f"💡 **Рекомендация:** {rec}" if rec else f"### 🎯 PRODF: {prodf}\n"
-                                                             f"**Спринт обнаружения:** {sprint} | "
-                                                             f"**Источник:** {task_id}\n\n{desc}")
+        text = (f"**Инициатива {prodf}**\n\n"
+                f"Спринт обнаружения {sprint} · источник {task_id}\n\n"
+                f"{desc}")
+        if rec:
+            text += f"\n\nРекомендация: {rec}"
+        render_func(text)
 
     with tabs[0]:
         for a in red_alerts:
