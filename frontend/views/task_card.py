@@ -1,4 +1,3 @@
-# Ответственный: Человек 4 (frontend + tests + docs)
 """Карточка задачи — переиспользуемый UI компонент."""
 
 from __future__ import annotations

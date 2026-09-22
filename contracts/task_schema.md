@@ -1,7 +1,5 @@
 # Схема Task / PlannedTask
 
-Ответственный: Человек 1 (ingestion + planning)
-
 ## Task
 
 Базовая сущность задачи, как она приходит из датасета (после `parse_dataset.py`).

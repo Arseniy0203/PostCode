@@ -1,5 +1,4 @@
-# Ответственный: Человек 2 (recalculation + risk)
-"""Находки агентов-критиков: 6-й спринт, роли с разным написанием, отпуск,
+"""Краевые случаи: 6-й спринт, роли с разным написанием, отпуск,
 синонимы статусов, новые задачи и факт в одном сообщении, часы с запятой,
 неверная папка данных, JSON-отчёт, сценарии с видимым эффектом."""
 
@@ -166,7 +165,7 @@ def test_empty_estimated_hh_is_not_a_mismatch():
     assert "C: estimated_hh" in text
 
 
-# --- Чужие и битые файлы (жюри загружает что угодно) ---------------------------
+# --- Чужие и битые файлы ---------------------------------------------------------------
 
 def _dataset_copy(tmp_path, edit, name="edited.xlsx"):
     """Копия датасета организаторов с правкой edit(workbook, sheet)."""
@@ -236,3 +235,30 @@ def test_not_a_dataset_gives_clear_reason(tmp_path):
     wb.save(other)
     with pytest.raises(ValueError, match="не похож на датасет"):
         parse_excel(str(other))
+
+
+def test_formula_ids_survive_resave_without_cached_values(tmp_path):
+    """ID в Spent_time_roles — формулы «=B24». Файл, сохранённый не из Excel, хранит
+    только формулу без значения: парсер должен сам вычислить ссылку."""
+    from backend.ingestion.parse_dataset import parse_excel
+
+    path = _dataset_copy(tmp_path, lambda wb, ws: None, name="resaved.xlsx")
+    spent = parse_excel(str(path))["spent_time_roles"]
+    assert [r["task_id"] for r in spent] == ["SRV-4041", "SRV-4011", "DB-202",
+                                              "MP-102", "MOB-7011", "KP-3898"]
+
+
+def test_tail_sp_is_the_same_on_week0_and_after_first_plan():
+    """У задачи с уже потраченными часами и ролью без людей остаток SP на Неделе 0
+    и после первого плана (когда появился unstaffed_hh) один и тот же — иначе план
+    сдвигается при пересчёте без всяких отклонений."""
+    from backend.recalculation.plan_fields import normalize_role
+    from backend.recalculation.recalc import _tail_input
+
+    task = {"task_id": "T", "status": "ToDo", "estimation_sp": 5,
+            "estimated_hh": {"Аналитик": 40, "Руководитель проекта": 10},
+            "spent_hh": {"Аналитик": 20}}
+    roles = {normalize_role("Аналитик")}
+    week0 = _tail_input(task, roles)["estimation_sp"]
+    after = _tail_input({**task, "unstaffed_hh": {"Руководитель проекта": 10}}, roles)["estimation_sp"]
+    assert week0 == after == 2.5

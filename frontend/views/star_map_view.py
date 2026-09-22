@@ -1,4 +1,3 @@
-# Ответственный: Человек 4 (frontend + tests + docs)
 """Страница звёздной карты компетенций."""
 
 from __future__ import annotations

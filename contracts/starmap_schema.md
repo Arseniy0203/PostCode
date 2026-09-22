@@ -1,6 +1,5 @@
 # Схема звёздной карты (EngineerCompetency)
 
-Ответственный: Человек 3 (starmap + explainability)
 Реализация: `backend/starmap/bus_factor.py::starmap_summary`
 
 ## EngineerCompetency

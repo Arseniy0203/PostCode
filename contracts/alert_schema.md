@@ -1,6 +1,6 @@
 # Схема Alert
 
-Ответственный: Человек 2 (recalculation + risk). Код: `backend/risk/alerts.py::Alert`,
+Код: `backend/risk/alerts.py::Alert`,
 в UI отдаётся через `Alert.to_dict()`.
 
 | Поле               | Тип                                        | Описание |
