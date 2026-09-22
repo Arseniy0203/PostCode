@@ -163,8 +163,27 @@ def check_data_quality(
             "Проверить, не потеряна ли задача при выгрузке; в планировании не участвует.",
         ))
 
+    from backend.recalculation.recalc import canonical_status
+
+    for task in tasks:
+        status = task.get("status")
+        if status is not None and str(status).strip() and not canonical_status(status)[1]:
+            alerts.append(_info(
+                task_id(task), prodf_id(task),
+                f"У {task_id(task)} статус «{status}» не распознан (ожидались ToDo / InProgress / Done).",
+                "Исправить статус в датасете; до этого задача планируется как незавершённая.",
+            ))
+
     for task in open_tasks:
         tid = task_id(task)
+        sp = task.get("estimation_sp")
+        # поле есть (колонка обязательна в Tasks), но пустое или не число
+        if "estimation_sp" in task and (not isinstance(sp, (int, float)) or not sp > 0):
+            alerts.append(_info(
+                tid, prodf_id(task),
+                f"У незавершённой задачи {tid} нет оценки в Story Points (пусто или не число).",
+                "Оценить задачу в SP: пока лимит ёмкости команды по SP к ней не применяется.",
+            ))
         if calc.get(tid, 0) <= 0:
             alerts.append(_info(
                 tid, prodf_id(task),

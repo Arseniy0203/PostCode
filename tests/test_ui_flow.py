@@ -68,7 +68,7 @@ def test_upload_replace_delete_and_all_pages() -> None:
     assert _sprints(at) == [1]
     assert any("Спринта 2" in u.label for u in at.file_uploader)
 
-    for page in ("План (PI-цикл)", "Риски и Алерты", "Звёздная карта"):
+    for page in ("План (PI-цикл)", "Всё сразу или по плану", "Риски и Алерты", "Звёздная карта"):
         at.sidebar.selectbox[0].set_value(page)
         at.run()
         assert not at.exception, (page, [e.value for e in at.exception])

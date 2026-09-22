@@ -48,7 +48,7 @@ SPRINT_HOURS = 80.0
 MISSING_ROLE_POLICY = "partial"   # "partial" | "postpone"
 MAX_MISSING_SHARE = 0.5
 _EPS = 1e-6
-SP_TOLERANCE = 0.05   # допуск на округление долей SP
+SP_TOLERANCE = 1e-6   # только погрешность float: ёмкость команды по SP — жёсткий лимит
 
 
 def normalize_role(role: str) -> str:

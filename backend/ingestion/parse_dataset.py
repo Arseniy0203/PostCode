@@ -8,39 +8,65 @@ import pandas as pd
 from typing import Any
 
 
+TASKS_MARKER = 'Tasks (Таблица задач и скоринга)'
+
+
 def parse_excel(filepath: str) -> dict[str, Any]:
     """Парсит Excel-датасет в словарь из 6 сущностей."""
 
     # Файл закрываем сразу: на Windows открытый ExcelFile не даёт удалить временный файл.
-    with pd.ExcelFile(filepath) as xls:
-        sheet_name = 'Датасет(обновленный)'
-        if sheet_name not in xls.sheet_names:
-            sheet_name = xls.sheet_names[0]
-        df = pd.read_excel(xls, sheet_name=sheet_name, header=None)
+    try:
+        xls_file = pd.ExcelFile(filepath)
+    except Exception as exc:  # noqa: BLE001 — не Excel: понятная ошибка вместо трассировки pandas
+        raise ValueError("Файл не читается как Excel (.xlsx). Возможно, это другой формат "
+                         "с расширением .xlsx или файл повреждён.") from exc
+    with xls_file as xls:
+        # Лист с данными — тот, где есть таблица задач: имя листа и лишние листы
+        # впереди (инструкция, титул) в скрытом датасете могут отличаться.
+        preferred = 'Датасет(обновленный)'
+        names = [preferred] if preferred in xls.sheet_names else []
+        names += [n for n in xls.sheet_names if n != preferred]
+        df = None
+        for name in names:
+            sheet = pd.read_excel(xls, sheet_name=name, header=None)
+            if not sheet.empty and sheet[0].astype(str).str.contains(
+                    TASKS_MARKER, na=False, regex=False).any():
+                df = sheet
+                break
+    if df is None:
+        raise ValueError("Файл не похож на датасет: ни на одном листе нет таблицы "
+                         f"«{TASKS_MARKER}». Загрузите Excel в формате датасета организаторов.")
 
-    def find_row(keyword: str) -> int:
+    def find_row(keyword: str, required: bool = True) -> int | None:
         mask = df[0].astype(str).str.contains(keyword, na=False, regex=False)
         if mask.any():
             return df[mask].index[0]
-        raise ValueError(f"Не найден маркер таблицы: '{keyword}'")
+        if required:
+            raise ValueError(f"В файле нет таблицы «{keyword}» — без неё план не построить.")
+        return None
 
-    idx_tasks = find_row('Tasks (Таблица задач и скоринга)')
-    idx_spent = find_row('Spent_time_roles')
+    idx_tasks = find_row(TASKS_MARKER)
+    # Необязательные таблицы: без них — пустой список (и отчёт о качестве данных), а не отказ
+    idx_spent = find_row('Spent_time_roles', required=False)
     idx_estimates = find_row('Estimates. Калькулятор сметы')
-    idx_deps = find_row('Task_dependencies')
+    idx_deps = find_row('Task_dependencies', required=False)
     idx_engineers = find_row('Engineers_profiles')
     idx_history = find_row('Team_history')
-    idx_dictionary = find_row('Итог разработки')
+    idx_dictionary = find_row('Итог разработки', required=False)
 
     # Конец таблицы — ближайший следующий маркер (любой), а не «следующий по
     # порядку»: если таблицы в файле переставить, срезы не перепутаются.
-    markers = sorted({idx_tasks, idx_spent, idx_estimates, idx_deps, idx_engineers,
-                      idx_history, idx_dictionary})
+    markers = sorted({i for i in (idx_tasks, idx_spent, idx_estimates, idx_deps, idx_engineers,
+                                  idx_history, idx_dictionary) if i is not None})
 
-    def end_of(start: int) -> int:
+    def end_of(start: int | None) -> int:
+        if start is None:
+            return 0
         return next((m for m in markers if m > start), len(df))
 
-    def slice_to_dict_robust(start_idx: int, end_idx: int) -> list[dict[str, Any]]:
+    def slice_to_dict_robust(start_idx: int | None, end_idx: int) -> list[dict[str, Any]]:
+        if start_idx is None:
+            return []
         raw_slice = df.iloc[start_idx + 1 : end_idx].copy()
         raw_slice = raw_slice.dropna(how='all', axis=0).dropna(how='all', axis=1)
         if raw_slice.empty:
@@ -63,7 +89,8 @@ def parse_excel(filepath: str) -> dict[str, Any]:
         for key, value in row.items():
             if key not in ('task_id', 'Исходное время') and value is not None:
                 num = _number(value)
-                row[key] = float(num) if isinstance(num, (int, float)) else num
+                # нечисловой факт («—», «н/д») — не потрачено, а не падение расчёта
+                row[key] = float(num) if isinstance(num, (int, float)) else 0.0
     history = slice_to_dict_robust(idx_history, end_of(idx_history))
 
     engineers = slice_to_dict_robust(idx_engineers, end_of(idx_engineers))
@@ -71,11 +98,14 @@ def parse_excel(filepath: str) -> dict[str, Any]:
     _require(engineers, "Engineers_profiles", ("engineer_id", "team_id", "role", "capacity_rate"))
     _require(history, "Team_history", ("team_id", "velocity_achieved"))
     for eng in engineers:
-        eng['capacity_rate'] = _number(eng.get('capacity_rate'))
+        rate = _number(eng.get('capacity_rate'))
+        # пустая или нечисловая доля — полная занятость (1.0), как у большинства в датасете
+        eng['capacity_rate'] = rate if isinstance(rate, (int, float)) and rate > 0 else 1.0
     for row in history:
         for key in ('velocity_achieved', 'planned_sp'):
             if key in row:
-                row[key] = _number(row.get(key))
+                value = _number(row.get(key))
+                row[key] = value if isinstance(value, (int, float)) else None
     for eng in engineers:
         raw_skills = str(eng.get('skills_declared', ''))
         if raw_skills and raw_skills != 'None':
@@ -86,7 +116,8 @@ def parse_excel(filepath: str) -> dict[str, Any]:
     # ==========================================
     # РУЧНОЙ ПАРСИНГ ЗАВИСИМОСТЕЙ (БЕЗ УМНОГО ПОИСКА)
     # ==========================================
-    raw_deps = df.iloc[idx_deps + 1 : end_of(idx_deps)].copy()
+    raw_deps = (df.iloc[idx_deps + 1 : end_of(idx_deps)].copy() if idx_deps is not None
+                else pd.DataFrame())
     raw_deps = raw_deps.dropna(how='all', axis=0)
     dependencies = []
     if not raw_deps.empty:
@@ -132,7 +163,9 @@ def parse_excel(filepath: str) -> dict[str, Any]:
             estimates = melted.to_dict(orient='records')
 
     for task in tasks:
-        task['estimation_sp'] = _number(task.get('estimation_sp'))
+        sp = _number(task.get('estimation_sp'))
+        # «пять», «—» и пустое — нет оценки в SP (задача попадёт в отчёт о качестве данных)
+        task['estimation_sp'] = sp if isinstance(sp, (int, float)) and sp == sp else None
 
     return {
         "tasks": tasks,

@@ -74,13 +74,14 @@ def render_task_card(task: dict[str, Any]) -> None:
     with st.container(border=True):
         st.subheader(f"{task.get('task_id', 'N/A')} — {task.get('summary', 'Без названия')}")
 
-        # 1. Основные параметры
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Инициатива", task.get("Номер инициативы") or task.get("prodf_id") or "—")
-        col2.metric("Команда", task.get("team_id") or "—")
-        col3.metric("Приоритет (rung)", str(task.get("rung", "—")))
-        col4.metric("Story Points", f"{task.get('estimation_sp', 0):g}"
-                    if isinstance(task.get("estimation_sp"), (int, float)) else "—")
+        # 1. Основные параметры — одной строкой (крупные метрики обрезали длинные значения)
+        sp = task.get("estimation_sp")
+        st.markdown(" · ".join([
+            f"Инициатива **{task.get('Номер инициативы') or task.get('prodf_id') or '—'}**",
+            f"команда **{task.get('team_id') or '—'}**",
+            f"приоритет (rung) **{task.get('rung', '—')}**",
+            f"**{sp:g} SP**" if isinstance(sp, (int, float)) else "SP —",
+        ]))
 
         # 2. Решение и его причина
         msg_type = {"included": st.success, "postponed": st.warning,
