@@ -102,6 +102,25 @@ def render_plan_view(plan: dict[str, Any], view_mode_label: str) -> None:
 
     st.markdown("---")
 
+    # --- Поиск задачи ---
+    # Дополняет раскрывающиеся блоки ниже: когда известен id или название,
+    # искать задачу по вкладкам спринтов не нужно.
+    st.markdown("### Поиск задачи")
+    task_mapping = {
+        f"{t.get('task_id')} · {t.get('summary') or 'Без названия'}": t
+        for t in filtered_tasks
+    }
+    NOT_SELECTED = "— не выбрано —"
+    picked = st.selectbox(
+        "Введите номер или название задачи, чтобы открыть карточку:",
+        options=[NOT_SELECTED, *task_mapping],
+        key="plan_task_search",
+    )
+    if picked != NOT_SELECTED:
+        render_task_card(task_mapping[picked])
+
+    st.markdown("---")
+
     # --- Сетка спринтов ---
     st.markdown("### Распределение по спринтам")
     st.caption("Нажмите на задачу, чтобы раскрыть карточку с причиной решения.")
