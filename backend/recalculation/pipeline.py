@@ -17,7 +17,7 @@ from typing import Any, Iterable
 
 from backend.recalculation.baseline import save_baseline
 from backend.recalculation.next_quarter import next_quarter_backlog
-from backend.recalculation.plan_fields import normalize_role
+from backend.recalculation.plan_fields import link_dependencies, normalize_role
 from backend.recalculation.recalc import (
     Planner,
     to_hours,
@@ -94,7 +94,7 @@ def build_week0(data: dict[str, Any], planner: Planner | None = None,
     unknown = mark_deferred(tasks, defer)
     current = plan_tasks(tasks, data["capacity"], data["dependencies"], data["engineers"],
                          planner=planner, start_sprint=1)
-    plan = save_baseline({"current": current})
+    plan = save_baseline({"current": link_dependencies(current, data["dependencies"])})
     plan["warnings"] = [f"Перенос {tid} пропущен: такой задачи нет." for tid in unknown]
     plan["capacity"] = data["capacity"]
     plan["history"][0].update(engineers_unavailable=[], engineers_hired=[], capacity=data["capacity"])

@@ -36,6 +36,7 @@
 | reason_label    | str                                     | Текст причины из справочника                                        |
 | recommendation  | str \| None                             | Что можно сделать (ответ экспертов п. 4)                            |
 | score           | float                                   | Скоринг: rung × (1 + 0.5 × число блокируемых задач)                 |
+| blocked_by / blocks | list[str]                           | Задачи плана, которые блокируют эту / которые она блокирует (для карточки) |
 | sprint_number   | int                                     | Спринт, к которому относится текущий срез строки плана               |
 | decision        | Literal["included", "postponed", "cancelled"] | Решение планировщика по задаче                              |
 | reason_code     | ReasonCode \| InclusionCode             | Код причины решения (см. `backend/explainability/reasons.py`)       |

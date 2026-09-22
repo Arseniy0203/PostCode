@@ -62,3 +62,23 @@ def test_demo_ideal_is_clean_and_cancel_is_red():
 
     _, delay = _replay("Scenario_2_Cascade_Delay")
     assert delay[0]["yellow"] >= 1
+
+
+def test_plan_tasks_know_their_dependencies():
+    """Карточка задачи показывает связи: blocked_by / blocks есть в плане и после пересчёта."""
+    from pathlib import Path
+    from backend.recalculation.pipeline import fact_from_dataset_excel, week0_from_excel
+    from backend.recalculation.recalc import apply_sprint_fact
+    state = week0_from_excel(Path("data/raw/Хакатон_датасетс_правками_по_списку_вопросов_1.xlsx").read_bytes())
+    for key in ("baseline", "current"):
+        by_id = {t["task_id"]: t for t in state["plan"][key]}
+        assert by_id["SRV-4042"]["blocked_by"] == ["SRV-4041"]
+        assert "SRV-4042" in by_id["SRV-4041"]["blocks"]
+        assert by_id["DB-203"]["blocked_by"] == ["DB-201"]   # блокер уже Done
+    fact = fact_from_dataset_excel(
+        Path("demo_scenarios/Scenario_1_Ideal/Sprint_1_Fact.xlsx").read_bytes(), state["plan"])
+    plan = apply_sprint_fact(plan=state["plan"], fact=fact, dependencies=state["clean_deps"],
+                             engineers=state["parsed"]["engineers_profiles"],
+                             capacity=state["plan"]["capacity"])
+    by_id = {t["task_id"]: t for t in plan["current"]}
+    assert by_id["SRV-4042"]["blocked_by"] == ["SRV-4041"]
