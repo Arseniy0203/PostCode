@@ -106,15 +106,16 @@ def render_plan_view(plan: dict[str, Any], view_mode_label: str) -> None:
     sprint_groups: dict[int, list] = {i: [] for i in range(1, 8)}
 
     for t in filtered_tasks:
-        if t.get("decision") in ("postponed", "cancelled") or not t.get("planned_start"):
+        # planned_start в датасете — старая дата; спринт квартала — planned_start_sprint
+        start_sprint = t.get("planned_start_sprint")
+        if t.get("decision") in ("postponed", "cancelled"):
             sprint_groups[7].append(t)
-        else:
+        elif isinstance(start_sprint, int) and 1 <= start_sprint <= 6:
             # Если задача растянута, показываем её в спринте старта
-            start_sprint = int(t.get("planned_start_sprint", 7))
-            if 1 <= start_sprint <= 6:
-                sprint_groups[start_sprint].append(t)
-            else:
-                sprint_groups[7].append(t)
+            sprint_groups[start_sprint].append(t)
+        elif t.get("status") != "Done":
+            # Done до квартала — история, в сетку спринтов не попадает
+            sprint_groups[7].append(t)
 
     # Отрисовка задач в соответствующих вкладках
     for i, tab in enumerate(tabs):

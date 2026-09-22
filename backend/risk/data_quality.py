@@ -174,7 +174,8 @@ def check_data_quality(
 
     for tid, task in by_id.items():
         declared = task.get("estimated_hh")
-        if not isinstance(declared, (int, float)) or tid not in calc:
+        # Пустая колонка (0 / NaN) — не расхождение, а отсутствие значения
+        if not isinstance(declared, (int, float)) or not declared > 0 or tid not in calc:
             continue
         if abs(float(declared) - calc[tid]) > 0.01:
             alerts.append(_info(

@@ -152,3 +152,15 @@ def test_data_quality_reports_cycles_and_self_loops():
 def test_hiring_headlines_account_for_search_time():
     report = run_quarter(until_sprint=0)
     assert all("выход к спринту 4" in s["headline"] for s in report["hiring_roadmap"])
+
+
+def test_empty_estimated_hh_is_not_a_mismatch():
+    """В датасете без колонки estimated_hh (0 / NaN) не должно быть 37 ложных «расхождений»."""
+    from backend.risk.data_quality import check_data_quality
+    tasks = [{"task_id": "A", "status": "ToDo", "estimated_hh": 0.0},
+             {"task_id": "B", "status": "ToDo", "estimated_hh": float("nan")},
+             {"task_id": "C", "status": "ToDo", "estimated_hh": 50}]
+    est = [{"task_id": t, "role": "Аналитик", "hours": 40} for t in "ABC"]
+    text = " | ".join(a.description for a in check_data_quality(tasks, est, []))
+    assert "A:" not in text and "B:" not in text
+    assert "C: estimated_hh" in text

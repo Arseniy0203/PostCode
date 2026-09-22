@@ -302,8 +302,13 @@ def init_session_state() -> None:
         st.session_state.master_dataset = None  # Сырые данные Недели 0
 
 
-def render_kpi_widgets(baseline_tasks: list[dict[str, Any]], current_tasks: list[dict[str, Any]]) -> None:
-    """Отрисовывает виджеты KPI в шапке приложения."""
+def render_kpi_widgets(baseline_tasks: list[dict[str, Any]], current_tasks: list[dict[str, Any]],
+                       current_sprint: int = 0) -> None:
+    """Отрисовывает виджеты KPI в шапке приложения.
+
+    current_sprint — последний спринт с загруженным фактом (0 — Неделя 0): Say/Do
+    показывается за него, PI до конца квартала — прогнозом по текущему плану.
+    """
     section_label("Квартальные показатели")
     st.caption("Знаменатель обеих метрик зафиксирован на Неделе 0 и не меняется при пересчёте.")
 
@@ -311,14 +316,17 @@ def render_kpi_widgets(baseline_tasks: list[dict[str, Any]], current_tasks: list
         st.info("Baseline пуст. Ожидание данных для расчета KPI.")
         return
 
-    metrics = kpi_breakdown(baseline_tasks, current_tasks)
+    current_sprint = int(current_sprint or 0)
+    metrics = kpi_breakdown(baseline_tasks, current_tasks, current_sprint=current_sprint)
 
-    pi_fact = metrics["pi_predictability"]["fact"]["value"]
+    quarter_over = current_sprint >= 6
+    pi_mode = "fact" if quarter_over else "forecast"
+    pi_fact = metrics["pi_predictability"][pi_mode]["value"]
     pi_norm = metrics["norms"]["pi_predictability"]
 
     say_do_list = metrics["say_do"]
-    latest_sd = say_do_list[-1] if say_do_list else {"sprint": 1, "value": 0.0}
-    sd_val = latest_sd["value"]
+    latest_sd = next((row for row in say_do_list if row["sprint"] == current_sprint), None)
+    sd_val = latest_sd["value"] if latest_sd else 0.0
     sd_norm = metrics["norms"]["say_do"]
 
     col1, col2 = st.columns(2)
@@ -326,13 +334,22 @@ def render_kpi_widgets(baseline_tasks: list[dict[str, Any]], current_tasks: list
     with col1:
         pi_in_norm = pi_norm[0] <= pi_fact <= pi_norm[1]
         st.metric(
-            label=f"PI Predictability (Норма {pi_norm[0]}-{pi_norm[1]}%)",
+            label=(f"PI Predictability{'' if quarter_over else ' · прогноз'} "
+                   f"(Норма {pi_norm[0]}-{pi_norm[1]}%)"),
             value=f"{pi_fact:.1f}%",
             delta="В пределах нормы" if pi_in_norm else "Отклонение от нормы",
             delta_color="normal" if pi_in_norm else "inverse"
         )
 
     with col2:
+        if latest_sd is None or latest_sd.get("status") in ("future", "no_data"):
+            st.metric(
+                label=f"Say/Do Ratio (Норма {sd_norm[0]}-{sd_norm[1]}%)",
+                value="—",
+                delta=latest_sd["status_label"] if latest_sd else "Факт спринтов ещё не загружен",
+                delta_color="off",
+            )
+            return
         sd_in_norm = sd_norm[0] <= sd_val <= sd_norm[1]
         st.metric(
             label=f"Sprint {latest_sd['sprint']} Say/Do Ratio (Норма {sd_norm[0]}-{sd_norm[1]}%)",
@@ -464,7 +481,8 @@ def main() -> None:
     alerts = active_state["alerts"]
     starmap = active_state["starmap"]
 
-    render_kpi_widgets(plan_dict.get("baseline", []), plan_dict.get("current", []))
+    render_kpi_widgets(plan_dict.get("baseline", []), plan_dict.get("current", []),
+                       plan_dict.get("current_sprint", 0))
     st.divider()
 
     if page == "План (PI-цикл)":
