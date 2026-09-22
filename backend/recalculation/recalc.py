@@ -35,6 +35,7 @@ from backend.recalculation.plan_fields import (
     field,
     is_done,
     is_included,
+    link_dependencies,
     normalize_role,
     prodf_id,
     remaining_hh,
@@ -553,7 +554,7 @@ def apply_sprint_fact(
         current = plan_tasks(list(tasks.values()), active_capacity, dependencies, active_engineers,
                              planner=planner, start_sprint=sprint + 1)
 
-    plan["current"] = current
+    plan["current"] = link_dependencies(current, dependencies)
     plan["current_sprint"] = sprint
     plan["engineers_unavailable"] = sorted(unavailable)
     plan["engineers_hired"] = list(hired.values())

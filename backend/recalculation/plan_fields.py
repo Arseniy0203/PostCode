@@ -145,3 +145,23 @@ def remaining_hh(task: Any) -> dict[str, tuple[str, float]]:
 
 def current_sprint(plan: Any) -> int:
     return int(field(plan, "current_sprint", default=0) or 0)
+
+
+def link_dependencies(tasks: list[dict[str, Any]], dependencies: Any) -> list[dict[str, Any]]:
+    """Проставляет задачам плана blocked_by / blocks — для карточки задачи.
+
+    Связи на задачи вне плана (призраки) не показываются: их уже нет в графе.
+    """
+    ids = {task_id(t) for t in tasks}
+    blocked_by: dict[str, list[str]] = {}
+    blocks: dict[str, list[str]] = {}
+    for dep in dependencies or []:
+        a, b = dep.get("blocking_task_id"), dep.get("blocked_task_id")
+        if a in ids and b in ids and a != b:
+            blocked_by.setdefault(b, []).append(a)
+            blocks.setdefault(a, []).append(b)
+    for task in tasks:
+        tid = task_id(task)
+        task["blocked_by"] = sorted(set(blocked_by.get(tid, [])))
+        task["blocks"] = sorted(set(blocks.get(tid, [])))
+    return tasks
