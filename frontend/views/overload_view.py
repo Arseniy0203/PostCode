@@ -142,3 +142,13 @@ def render_overload_view(overload: dict[str, Any] | None) -> None:
                 color=alt.condition(alt.datum.pct > 60, alt.value("#FFFFFF"), alt.value("#111827")))
             st.altair_chart((heat + text).properties(height=alt.Step(30)), use_container_width=True)
             st.caption("Процент ёмкости команды по SP в каждом спринте плана Недели 0.")
+            idle = sorted(load.loc[(load["sprint"] == load["sprint"].max()) & (load["pct"] == 0),
+                                   "team_id"].unique())
+            if idle:
+                st.caption(
+                    f"Пустой последний спринт у {', '.join(idle)} — не простой, а резерв: вся "
+                    "работа, которую могут сделать имеющиеся люди, уже разложена в спринтах "
+                    "раньше. Остаток — часы ролей, которых нет в компании (руководитель проекта, "
+                    "поддержка, 1С): их не закрыть, пока роль не наняли. Свободная ёмкость — "
+                    "запас на срывы сроков, новые задачи от заказчика или работу нанятого "
+                    "специалиста.")

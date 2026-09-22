@@ -35,8 +35,16 @@ def render_star_map_view(competencies: Any) -> None:
     # Настройки визуализации: компетенции — звёзды, инженеры — точки.
     # Размер звезды растёт с числом носителей, поэтому одиночки визуально мельче
     # и ярче выделяются красным.
+    # Подписи с белой обводкой читаются поверх рёбер. vis рисует размеры в координатах
+    # графа, а «вписать в экран» уменьшает масштаб примерно вдвое — отсюда крупные числа.
+    # Шрифт системный: Inter из CSS страницы в iframe графа не попадает.
     NODE_SIZE_TECH = 26
     NODE_SIZE_ENG = 9
+    FACE = "arial"
+    FONT_TECH = {"size": 28, "color": "#111827", "face": FACE, "strokeWidth": 6,
+                 "strokeColor": "#FFFFFF"}
+    FONT_ENG = {"size": 19, "color": "#5B6472", "face": FACE, "strokeWidth": 5,
+                "strokeColor": "#FFFFFF"}
     COLOR_CRITICAL = "#B3261E"  # Приглушённый красный: Bus Factor = 1
     COLOR_NORMAL = "#294DA6"  # Синий из логотипа «почтатех»
     COLOR_ENG = "#9AA3B0"  # Нейтральный серый: инженеры
@@ -65,7 +73,7 @@ def render_star_map_view(competencies: Any) -> None:
                 shape="dot",
                 size=NODE_SIZE_ENG,
                 color=COLOR_ENG,
-                font={"size": 11, "color": "#5B6472", "face": "Inter"},
+                font=FONT_ENG,
                 title=f"{eng_id} · {eng.get('role', 'роль не указана')}"
             ))
             added_engineers.add(eng_id)
@@ -80,8 +88,7 @@ def render_star_map_view(competencies: Any) -> None:
                     shape="star",
                     size=NODE_SIZE_TECH + min(bf, 6) * 3,
                     color=COLOR_CRITICAL if is_critical else COLOR_NORMAL,
-                    font={"size": 13, "color": "#111827", "face": "Inter",
-                          "bold": {"color": "#111827"}},
+                    font=FONT_TECH,
                     borderWidth=0,
                     title=f"{skill} · Bus Factor {bf}"
                 ))
@@ -91,9 +98,11 @@ def render_star_map_view(competencies: Any) -> None:
             edges.append(Edge(source=eng_id, target=skill, color="#D7DBE3", width=1))
 
     # Конфигурация интерактивности графа
+    # width задаётся в пикселях: Config превращает его в f"{width}px", и "100%" давал
+    # невалидное "100%px" — граф сжимался и подписи становились нечитаемыми
     config = Config(
-        width="100%",
-        height=620,
+        width=960,
+        height=760,
         directed=False,
         physics=True,
         hierarchical=False,
@@ -101,13 +110,19 @@ def render_star_map_view(competencies: Any) -> None:
         highlightColor="#294DA6",
         backgroundColor="#FFFFFF",
     )
+    # Компактная раскладка: звёзды без носителей ни с чем не связаны, и без сильной
+    # центральной гравитации их уносит к краям — автомасштаб отдаляет граф, подписи мельчают
+    config.physics["barnesHut"] = {"gravitationalConstant": -6000, "centralGravity": 1.0,
+                                   "springLength": 160, "springConstant": 0.04,
+                                   "avoidOverlap": 0.5}
+    config.physics["stabilization"]["iterations"] = 300
 
     st.subheader("Интерактивный граф компетенций")
     st.caption(
         "Звёзды — компетенции, точки — инженеры. Размер звезды растёт с числом "
         "носителей: сплошные красные держатся на одном человеке, пустые с красным "
-        "контуром не имеют носителей вовсе. Выберите звезду, чтобы увидеть задачи "
-        "под риском.")
+        "контуром не имеют носителей вовсе. Колесо мыши — масштаб; выберите звезду "
+        "или компетенцию в списке под графом, чтобы увидеть задачи под риском.")
 
     show_missing = st.checkbox(
         f"Показать компетенции без носителей · Bus Factor 0 ({len(missing_competencies)})",
@@ -128,7 +143,7 @@ def render_star_map_view(competencies: Any) -> None:
                        "highlight": {"background": "#FDECEA", "border": COLOR_MISSING}},
                 borderWidth=2,
                 borderWidthSelected=3,
-                font={"size": 13, "color": COLOR_MISSING, "face": "Inter"},
+                font={**FONT_TECH, "color": COLOR_MISSING},
                 title=f"{skill} · Bus Factor 0 — носителей нет",
             ))
 
@@ -136,6 +151,18 @@ def render_star_map_view(competencies: Any) -> None:
     clicked_node_id = agraph(nodes=nodes, edges=edges, config=config)
 
     st.subheader("Зона риска")
+
+    # Альтернатива клику по звезде: выбор из списка (кликать по мелким узлам неудобно)
+    risky = sorted(missing_competencies) + sorted(critical_skills)
+    picked = st.selectbox(
+        "Компетенция под риском",
+        options=["— выберите или кликните звезду на графе —", *risky],
+        format_func=lambda v: v if v.startswith("—") else (
+            f"{v} · Bus Factor 0" if v in missing_competencies else f"{v} · Bus Factor 1"),
+        key="starmap_pick",
+    )
+    if not picked.startswith("—"):
+        clicked_node_id = picked
 
     if not critical_skills and not missing_competencies:
         st.success("Компетенций с единственным носителем не обнаружено.")
@@ -181,7 +208,7 @@ def render_star_map_view(competencies: Any) -> None:
             st.info(f"**{clicked_node_id}** · {profile.get('role', 'роль не указана')} · {teams}")
 
         else:
-            st.caption("Выберите красную звезду на графе, чтобы увидеть задачи под риском.")
+            st.caption("Выберите красную звезду на графе или компетенцию в списке выше.")
 
     _render_recommendations(competencies.get("recommendations") or {})
     _render_team_bus_factor(competencies.get("team_bus_factor") or {})
