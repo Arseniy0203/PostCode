@@ -1,6 +1,7 @@
 pandas
 openpyxl
 streamlit
+streamlit-agraph
 pytest
 # fastapi  # раскомментировать, если понадобится отдельный API-слой (backend/api/server.py)
 # uvicorn  # ASGI-сервер для FastAPI, если используется

@@ -32,6 +32,82 @@ DEFAULT_ENGINEERS_PATH = os.path.join("data", "processed", "engineers_profiles.j
 DATA_PATH = os.getenv("APP_DATA_PATH", DEFAULT_DATA_PATH)
 ENGINEERS_PATH = os.getenv("ENGINEERS_DATA_PATH", DEFAULT_ENGINEERS_PATH)
 APP_TITLE = os.getenv("APP_TITLE", "ПочтаТех: PI-Планирование")
+LOGO_PATH = os.getenv("LOGO_PATH", os.path.join("frontend", "assets", "logo_pochtatex.png"))
+
+
+def inject_custom_css() -> None:
+    """
+    Инжектирует CSS для стилизации интерфейса в стиле Glassmorphism (Liquid Glass).
+    Форсирует темный цвет текста для предотвращения слияния со светлым фоном
+    в случае активного Dark Mode в браузере/системе.
+    """
+    st.markdown(
+        """
+        <style>
+        /* Скрытие стандартного хедера, футера и гамбургер-меню */
+        #MainMenu {visibility: hidden;}
+        header {visibility: hidden;}
+        footer {visibility: hidden;}
+
+        /* Корпоративный фон (мягкий градиент от светло-синего к белому) */
+        .stApp {
+            background: linear-gradient(135deg, #e3f2fd 0%, #ffffff 100%);
+            background-attachment: fixed;
+        }
+
+        /* =========================================
+           ФОРСИРОВАНИЕ ТЕМНОГО ТЕКСТА (Анти-DarkMode) 
+           ========================================= */
+        .stApp, .stApp p, .stApp span, .stApp label, .stApp li, .stApp div {
+            color: #1e293b !important; /* Глубокий серо-синий для основного текста */
+        }
+
+        h1, h2, h3, h4, h5, h6 {
+            color: #003366 !important; /* Корпоративный синий ПочтаТеха */
+        }
+
+        /* Заголовки экспандеров, вкладки (tabs) и значения метрик */
+        .streamlit-expanderHeader, button[data-baseweb="tab"] p, div[data-testid="stMetricValue"] > div {
+            color: #003366 !important;
+        }
+        /* ========================================= */
+
+        /* ========================================= */
+
+        /* Стилизация Glassmorphism для карточек (только метрики, экспандеры и контейнеры с рамкой) */
+        div[data-testid="stMetric"],
+        div[data-testid="stExpander"],
+        div[data-testid="stVerticalBlockBorderWrapper"] {
+            background: rgba(255, 255, 255, 0.7) !important;
+            backdrop-filter: blur(12px) !important;
+            -webkit-backdrop-filter: blur(12px) !important;
+            border: 1px solid rgba(255, 255, 255, 0.8) !important;
+            border-radius: 16px !important;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07) !important;
+            padding: 1rem;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        /* Анимация при наведении */
+        div[data-testid="stMetric"]:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 12px 40px 0 rgba(31, 38, 135, 0.12) !important;
+        }
+
+        /* Полупрозрачный сайдбар с темным текстом */
+        [data-testid="stSidebar"] {
+            background: rgba(255, 255, 255, 0.5) !important;
+            backdrop-filter: blur(15px);
+            border-right: 1px solid rgba(255, 255, 255, 0.6);
+        }
+
+        [data-testid="stSidebar"] p, [data-testid="stSidebar"] span, [data-testid="stSidebar"] label {
+            color: #1e293b !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
 
 
 @st.cache_data
@@ -154,6 +230,15 @@ def render_kpi_widgets(baseline_tasks: list[dict[str, Any]], current_tasks: list
 def main() -> None:
     """Инициализирует Streamlit-страницу и sidebar-навигацию."""
     st.set_page_config(page_title=APP_TITLE, layout="wide")
+
+    # Применяем кастомные стили Glassmorphism
+    inject_custom_css()
+
+    # Заглушка для логотипа проекта
+    if os.path.exists(LOGO_PATH):
+        st.sidebar.image(LOGO_PATH, use_container_width=True)
+    else:
+        st.sidebar.markdown(f"*{LOGO_PATH} не найден*")
 
     st.sidebar.title("🧭 Навигация")
 
