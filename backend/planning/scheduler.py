@@ -4,22 +4,59 @@ import copy
 
 QUARTER_SPRINTS = 6
 
-# Коды причин — из справочника датасета (backend/explainability/reasons.py).
-# Берём значения из ReasonCode, чтобы строки не разъезжались между модулями.
-from backend.explainability.reasons import ReasonCode
+REASON_MISSING_COMPETENCE = "MISSING_COMPETENCE"
+REASON_DEPENDENCY_BLOCK = "DEPENDENCY_BLOCK"
+REASON_CAPACITY_LIMIT = "CAPACITY_LIMIT"
 
-REASON_MISSING_COMPETENCE = ReasonCode.NO_RESOURCES.value          # «Отсутствие ресурсов»
-REASON_DEPENDENCY_BLOCK = ReasonCode.DEPENDENT_TEAM_NOT_READY.value  # «Отсутствует готовность смежных команд»
-REASON_CAPACITY_LIMIT = ReasonCode.PLAN_EXCEEDED.value             # «Превышение плана»
+try:
+    from backend.explainability.reasons import (
+        get_missing_competence_reason,
+        get_dependency_block_reason,
+        get_capacity_sp_reason,
+        get_capacity_hh_reason
+    )
+except ImportError:
+    def get_missing_competence_reason(roles: list[str]) -> dict[str, Any]:
+        return {
+            "reason_code": "MISSING_COMPETENCE", 
+            "reason_detail": f"В компании нет необходимых ролей: {', '.join(roles)}",
+            "reason_facts": {"missing_roles": roles}
+        }
+    def get_dependency_block_reason(blocker_id: str) -> dict[str, Any]:
+        return {
+            "reason_code": "DEPENDENCY_BLOCK", 
+            "reason_detail": f"Блокирующая задача {blocker_id} не выполнена или выпадает за квартал",
+            "reason_facts": {"blocker_task_id": blocker_id}
+        }
+    def get_capacity_sp_reason(req_sp: float, avail_sp: float) -> dict[str, Any]:
+        return {
+            "reason_code": "CAPACITY_LIMIT_SP", 
+            "reason_detail": f"Не хватило SP команды. Требуется {req_sp}, макс. доступно {avail_sp}",
+            "reason_facts": {"required_sp": req_sp, "max_available_sp": avail_sp}
+        }
+    def get_capacity_hh_reason(rem_hh: dict[str, float]) -> dict[str, Any]:
+        return {
+            "reason_code": "CAPACITY_LIMIT_HH", 
+            "reason_detail": "Не хватило часов (ЧЧ) специалистов до конца квартала",
+            "reason_facts": {"unallocated_hh": rem_hh}
+        }
+
 
 def normalize_role(role: str) -> str:
-    """Нормализует название роли: нижний регистр, без пробелов. Игнорирует 'Итого'."""
     if not role:
         return ""
     r = str(role).strip().lower().replace(" ", "").replace("_", "").replace("-", "")
     if "итого" in r:
         return ""
     return r
+
+
+def parse_float_safe(val: Any) -> float:
+    """Безопасный парсинг чисел, даже если они пришли с запятой."""
+    try:
+        return float(str(val or 0).replace(',', '.'))
+    except (ValueError, TypeError):
+        return 0.0
 
 
 def build_baseline_plan(
@@ -43,7 +80,6 @@ def build_baseline_plan(
     planned_tasks: list[dict[str, Any]] = []
     unlocked_tasks: list[dict[str, Any]] = []
 
-    # Карты зависимостей
     blocked_by: dict[str, list[str]] = {}
     for dep in dependencies:
         blocked = dep.get("blocked_task_id", "")
@@ -51,7 +87,6 @@ def build_baseline_plan(
         if blocked and blocking:
             blocked_by.setdefault(blocked, []).append(blocking)
 
-    # Карта инженеров (Локальный пул команды + Глобальный пул компании)
     team_role_engs: dict[str, dict[str, list[str]]] = {}
     global_role_engs: dict[str, list[str]] = {}
     
@@ -64,7 +99,7 @@ def build_baseline_plan(
             if t_id:
                 team_role_engs.setdefault(t_id, {}).setdefault(role, []).append(e_id)
 
-    # 1. ПРЕДОБРАБОТКА ЗАБЛОКИРОВАННЫХ ЗАДАЧ
+    # 1. ПРЕДОБРАБОТКА ЗАБЛОКИРОВАННЫХ ЗАДАЧ (ФАКТ)
     for task in tasks:
         t_id = task.get("task_id", "")
         if t_id in locked_set:
@@ -72,8 +107,14 @@ def build_baseline_plan(
             start_s = planned_task.get("planned_start_sprint")
             team = planned_task.get("team_id")
             
+            # Принудительно проставляем решение для прошлых/зафиксированных задач
+            if not planned_task.get("decision"):
+                planned_task["decision"] = "included"
+            if not planned_task.get("target_option"):
+                planned_task["target_option"] = "Реализовано"
+            
             if start_s and team and start_s >= start_sprint:
-                sp = float(planned_task.get("estimation_sp", 0) or 0)
+                sp = parse_float_safe(planned_task.get("estimation_sp"))
                 if start_s in rem_team_sp and team in rem_team_sp[start_s]:
                     rem_team_sp[start_s][team] -= sp
             
@@ -83,7 +124,7 @@ def build_baseline_plan(
                 if s >= start_sprint and s in rem_eng_hh:
                     for e_id, hours in eng_hours.items():
                         if e_id in rem_eng_hh[s]:
-                            rem_eng_hh[s][e_id] -= float(hours)
+                            rem_eng_hh[s][e_id] -= parse_float_safe(hours)
                             
             end_s = planned_task.get("forecast_end_sprint") or planned_task.get("planned_end_sprint") or 0
             task_end_sprint[t_id] = end_s
@@ -99,19 +140,16 @@ def build_baseline_plan(
     for dep in dependencies:
         blocking = dep.get("blocking_task_id", "")
         blocked = dep.get("blocked_task_id", "")
-        # Учитываем только связи между незаблокированными задачами
         if blocking in unlocked_ids and blocked in unlocked_ids:
             adj_list[blocking].append(blocked)
             in_degree[blocked] += 1
 
-    # Очередь задач, которые никого не ждут
     available_queue = [t for t in unlocked_tasks if in_degree[t.get("task_id")] == 0]
     sorted_tasks = []
 
     while available_queue:
-        # Сортируем доступные задачи по ценности (Rung)
         available_queue.sort(
-            key=lambda x: float(x.get("rung", 0) if x.get("rung") is not None else 0), 
+            key=lambda x: parse_float_safe(x.get("rung")), 
             reverse=True
         )
         current = available_queue.pop(0)
@@ -125,10 +163,9 @@ def build_baseline_plan(
                 if neighbor_task:
                     available_queue.append(neighbor_task)
 
-    # Докидываем циклы или битые графы (если остались)
     processed_ids = {t.get("task_id") for t in sorted_tasks}
     leftovers = [t for t in unlocked_tasks if t.get("task_id") not in processed_ids]
-    leftovers.sort(key=lambda x: float(x.get("rung", 0) if x.get("rung") is not None else 0), reverse=True)
+    leftovers.sort(key=lambda x: parse_float_safe(x.get("rung")), reverse=True)
     sorted_tasks.extend(leftovers)
 
     # 3. ПЛАНИРОВАНИЕ ОСТАВШЕГОСЯ ХВОСТА
@@ -146,35 +183,34 @@ def build_baseline_plan(
                 "decision": "included",
                 "planned_start_sprint": 0,
                 "planned_end_sprint": 0,
-                "forecast_end_sprint": 0
+                "forecast_end_sprint": 0,
+                "target_option": "Реализовано"
             })
             task_end_sprint[t_id] = 0
             planned_tasks.append(planned_task)
             continue
 
-        sp = float(task.get("estimation_sp", 0) or 0)
+        sp = parse_float_safe(task.get("estimation_sp"))
         
-        # Сбор и валидация часов
         est_hh: dict[str, float] = {}
         if estimates is not None:
             task_estimates = [e for e in estimates if e.get("task_id") == t_id]
             for e in task_estimates:
                 r = normalize_role(e.get("role"))
-                h = float(e.get("hours", 0) or 0)
+                h = parse_float_safe(e.get("hours"))
                 if r and h > 0:
                     est_hh[r] = est_hh.get(r, 0) + h
             
             calc_total = sum(est_hh.values())
             raw_hh = task.get("estimated_hh", {})
-            task_total = sum(float(v) for v in raw_hh.values()) if isinstance(raw_hh, dict) else 0.0
+            task_total = sum(parse_float_safe(v) for v in raw_hh.values()) if isinstance(raw_hh, dict) else 0.0
             
             if calc_total != task_total:
                 print(f"ВНИМАНИЕ: Расхождение часов в задаче {t_id}. В estimated_hh: {task_total} ч, в Калькуляторе: {calc_total} ч")
         else:
             raw_hh = task.get("estimated_hh", {})
-            est_hh = {normalize_role(k): float(v) for k, v in raw_hh.items()}
+            est_hh = {normalize_role(k): parse_float_safe(v) for k, v in raw_hh.items()}
 
-        # Проверка компетенций (Сначала в команде, потом в компании)
         missing_roles = []
         for role in est_hh.keys():
             if role not in team_role_engs.get(team, {}) and role not in global_role_engs:
@@ -183,33 +219,33 @@ def build_baseline_plan(
         if missing_roles:
             planned_task.update({
                 "decision": "postponed",
-                "reason_code": REASON_MISSING_COMPETENCE,
-                "reason_detail": f"В компании нет необходимых ролей: {', '.join(missing_roles)}"
+                "target_option": "Перенос"
             })
+            planned_task.update(get_missing_competence_reason(missing_roles))
             planned_tasks.append(planned_task)
             continue
 
-        # Проверка зависимостей
         blockers = blocked_by.get(t_id, [])
         earliest_start = start_sprint
         dependency_failed = False
+        failed_blocker_id = ""
 
         for b_id in blockers:
             if b_id not in task_end_sprint:
                 dependency_failed = True
+                failed_blocker_id = b_id
                 break
             earliest_start = max(earliest_start, task_end_sprint[b_id] + 1)
 
         if dependency_failed or earliest_start > QUARTER_SPRINTS:
             planned_task.update({
                 "decision": "postponed",
-                "reason_code": REASON_DEPENDENCY_BLOCK,
-                "reason_detail": "Блокирующая задача не выполнена или выпадает за квартал"
+                "target_option": "Перенос"
             })
+            planned_task.update(get_dependency_block_reason(failed_blocker_id))
             planned_tasks.append(planned_task)
             continue
 
-        # Поиск слота и сплитование по часам
         current_sprint = earliest_start
         task_started = False
         start_s = None
@@ -231,7 +267,6 @@ def build_baseline_plan(
                 if req_hours <= 0:
                     continue
                 
-                # ШЕРИНГ РЕСУРСОВ: Пробуем команду, если пусто — берем глобальный пул
                 avail_engineers = team_role_engs.get(team, {}).get(role, [])
                 if not avail_engineers:
                     avail_engineers = global_role_engs.get(role, [])
@@ -263,20 +298,24 @@ def build_baseline_plan(
                 "decision": "included",
                 "planned_start_sprint": start_s,
                 "planned_end_sprint": current_sprint,
-                "forecast_end_sprint": current_sprint
+                "forecast_end_sprint": current_sprint,
+                "target_option": "Реализовано"
             })
             task_end_sprint[t_id] = current_sprint
         else:
-            if task_started:
-                rem_team_sp[start_s][team] += sp
-                
             planned_task.update({
                 "decision": "postponed",
-                "reason_code": REASON_CAPACITY_LIMIT,
-                "reason_detail": "Не хватило часов (ЧЧ) до конца квартала",
+                "target_option": "Перенос",
                 "allocation": {},
                 "assigned_engineers": []
             })
+            
+            if not task_started:
+                max_sp_available = max([rem_team_sp[s].get(team, 0) for s in range(start_sprint, QUARTER_SPRINTS + 1)] + [0])
+                planned_task.update(get_capacity_sp_reason(sp, max_sp_available))
+            else:
+                rem_team_sp[start_s][team] += sp
+                planned_task.update(get_capacity_hh_reason(remaining_hh))
             
         planned_tasks.append(planned_task)
 
