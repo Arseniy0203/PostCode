@@ -105,13 +105,16 @@ def render_risk_view(alerts: list[Any], resolved: list[Any] | None = None,
     if not red_alerts and not yellow_alerts:
         st.success("Срывов и каскадных сдвигов нет: инициативы укладываются в квартал.")
 
-    tabs = st.tabs([
+    names = [
         f"Критические · {len(red_alerts)}",
         f"Каскадные · {len(yellow_alerts)}",
         f"Ресурсные · {len(orange_alerts)}",
         f"Наблюдения · {len(info_alerts)}",
         f"Качество данных · {len(data_quality)}",
-    ])
+    ]
+    counts = [len(red_alerts), len(yellow_alerts), len(orange_alerts), len(info_alerts),
+              len(data_quality)]
+    tabs = st.tabs(names, default=next((n for n, c in zip(names, counts) if c), names[0]))
 
     with tabs[0]:
         st.caption("Прогноз окончания за 6-м спринтом или задача выпала из плана Недели 0.")

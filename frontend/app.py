@@ -38,6 +38,7 @@ from backend.recalculation.pipeline import (
 from views.plan_view import render_plan_view
 from views.risk_view import render_risk_view
 from views.star_map_view import render_star_map_view
+from views.overload_view import render_overload_view
 
 
 APP_TITLE = os.getenv("APP_TITLE", "ПочтаТех: PI-Планирование")
@@ -269,6 +270,7 @@ def process_baseline(file_bytes: bytes) -> dict[str, Any]:
     state = week0_from_excel(file_bytes)
     result = {key: state[key] for key in ("parsed", "clean_deps", "plan", "alerts", "starmap")}
     result["data_quality"] = list((state.get("report") or {}).get("data_quality") or [])
+    result["overload"] = state.get("overload")
     return result
 
 
@@ -462,20 +464,22 @@ def render_kpi_widgets(baseline_tasks: list[dict[str, Any]], current_tasks: list
     quarter_over = current_sprint >= 6
     pi_mode = "fact" if quarter_over else "forecast"
     pi_fact = metrics["pi_predictability"][pi_mode]["value"]
-    pi_norm = metrics["norms"]["pi_predictability"]
+    pi_norm = [f"{v:g}" for v in metrics["norms"]["pi_predictability"]]
+    pi_range = tuple(float(v) for v in metrics["norms"]["pi_predictability"])
 
     say_do_list = metrics["say_do"]
     latest_sd = next((row for row in say_do_list if row["sprint"] == current_sprint), None)
     sd_val = latest_sd["value"] if latest_sd else 0.0
-    sd_norm = metrics["norms"]["say_do"]
+    sd_norm = [f"{v:g}" for v in metrics["norms"]["say_do"]]
+    sd_range = tuple(float(v) for v in metrics["norms"]["say_do"])
 
     col1, col2 = st.columns(2)
 
     with col1:
-        pi_in_norm = pi_norm[0] <= pi_fact <= pi_norm[1]
+        pi_in_norm = pi_range[0] <= pi_fact <= pi_range[1]
         st.metric(
             label=(f"PI Predictability{'' if quarter_over else ' · прогноз'} "
-                   f"(Норма {pi_norm[0]}-{pi_norm[1]}%)"),
+                   f"(норма {pi_norm[0]}–{pi_norm[1]}%)"),
             value=f"{pi_fact:.1f}%",
             delta="В пределах нормы" if pi_in_norm else "Отклонение от нормы",
             delta_color="normal" if pi_in_norm else "inverse"
@@ -484,15 +488,15 @@ def render_kpi_widgets(baseline_tasks: list[dict[str, Any]], current_tasks: list
     with col2:
         if latest_sd is None or latest_sd.get("status") in ("future", "no_data"):
             st.metric(
-                label=f"Say/Do Ratio (Норма {sd_norm[0]}-{sd_norm[1]}%)",
+                label=f"Say/Do Ratio (норма {sd_norm[0]}–{sd_norm[1]}%)",
                 value="—",
                 delta=latest_sd["status_label"] if latest_sd else "Факт спринтов ещё не загружен",
                 delta_color="off",
             )
             return
-        sd_in_norm = sd_norm[0] <= sd_val <= sd_norm[1]
+        sd_in_norm = sd_range[0] <= sd_val <= sd_range[1]
         st.metric(
-            label=f"Say/Do Ratio · спринт {latest_sd['sprint']} (Норма {sd_norm[0]}-{sd_norm[1]}%)",
+            label=f"Say/Do Ratio · спринт {latest_sd['sprint']} (норма {sd_norm[0]}–{sd_norm[1]}%)",
             value=f"{sd_val:.1f}%",
             delta="В пределах нормы" if sd_in_norm else "Отклонение от нормы",
             delta_color="normal" if sd_in_norm else "inverse"
@@ -575,7 +579,8 @@ def main() -> None:
             selected_key = k
             break
 
-    page = st.sidebar.selectbox("Раздел", options=["План (PI-цикл)", "Риски и Алерты", "Звёздная карта"])
+    page = st.sidebar.selectbox("Раздел", options=["План (PI-цикл)", "Всё сразу или по плану",
+                                                   "Риски и Алерты", "Звёздная карта"])
 
     st.sidebar.markdown("---")
     st.sidebar.caption("Кронверкские псы · хакатон ПочтаТех")
@@ -592,6 +597,8 @@ def main() -> None:
 
     if page == "План (PI-цикл)":
         render_plan_view(plan_dict, selected_mode_label)
+    elif page == "Всё сразу или по плану":
+        render_overload_view((st.session_state.master_dataset or {}).get("overload"))
     elif page == "Риски и Алерты":
         render_risk_view(alerts, plan_dict.get("resolved_alerts") or [],
                          (st.session_state.master_dataset or {}).get("data_quality") or [])

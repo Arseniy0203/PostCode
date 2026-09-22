@@ -341,8 +341,11 @@ def week0_from_excel(data: bytes | str | Path, planner: Planner | None = None) -
                                   + list(parsed.get("duplicate_dependencies") or []))
     plan = build_week0(dataset, planner)
     report = build_report(plan, dataset, planner)
+    from backend.recalculation.overload import overload_report
+    overload = _jsonable(overload_report(dataset, plan, report.get("strict_comparison")))
     return {"parsed": parsed, "clean_deps": clean, "dataset": dataset, "plan": plan,
-            "alerts": report["alerts"], "starmap": report["starmap"], "report": report}
+            "alerts": report["alerts"], "starmap": report["starmap"], "report": report,
+            "overload": overload}
 
 
 def fact_from_dataset_excel(data: bytes | str | Path, plan: dict[str, Any]) -> dict[str, Any]:
