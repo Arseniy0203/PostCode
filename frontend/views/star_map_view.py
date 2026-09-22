@@ -132,6 +132,17 @@ def render_star_map_view(competencies: Any) -> None:
                 title=f"{skill} · Bus Factor 0 — носителей нет",
             ))
 
+    # Счётчики: по мере закрытия задач компетенций на карте становится меньше,
+    # и инженеры уходят с графа. Без этой подписи выглядит так, будто люди
+    # уволились, хотя штат не менялся.
+    all_engineers = {e.get("engineer_id") for e in engineers if e.get("engineer_id")}
+    all_skills = {s for e in engineers for s in e.get("skills_declared", [])}
+    st.caption(
+        f"На карте {len(added_skills)} компетенций из {len(all_skills)} заявленных — "
+        f"только те, что нужны незакрытым задачам плана. "
+        f"Инженеров {len(added_engineers)} из {len(all_engineers)}: остальные "
+        f"не заняты в оставшейся части квартала.")
+
     # Отрисовка графа с захватом ID кликнутого узла
     clicked_node_id = agraph(nodes=nodes, edges=edges, config=config)
 
