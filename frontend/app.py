@@ -167,14 +167,21 @@ def process_baseline(file_bytes: bytes) -> dict[str, Any]:
         parsed = parse_excel(tmp_path)
         clean_deps, _ = filter_orphan_dependencies(parsed["task_dependencies"], parsed["tasks"])
 
-        # Динамический сбор Capacity из Team_history
+        # Динамический сбор Capacity из Team_history и Engineers_profiles
         capacity = {"team_sp": {}, "engineer_hh": {}}
+
         for th in parsed.get("team_history", []):
             t_id = th.get("team_id")
-            sp = th.get("velocity_sp")
+            sp = th.get("velocity_sp") or th.get("velocity_achieved")
             if t_id and sp:
-                # 20% резерв по ТЗ (Focus Factor 0.8)
                 capacity["team_sp"][t_id] = float(sp) * 0.8
+
+        # Планировщику нужны часы инженеров (1.0 ставки = 80 часов)
+        for eng in parsed.get("engineers_profiles", []):
+            e_id = eng.get("engineer_id")
+            rate = float(eng.get("capacity_rate") or 0.0)
+            if e_id:
+                capacity["engineer_hh"][e_id] = 80.0 * rate
 
         plan = build_baseline_plan(
             tasks=parsed["tasks"],
@@ -231,13 +238,20 @@ def process_fact(prev_plan: dict[str, Any], master_deps: list[dict[str, Any]], m
                         except (ValueError, TypeError):
                             pass
 
-        # Реконструируем capacity из history
+        # Реконструируем capacity из history и engineers
         capacity = {"team_sp": {}, "engineer_hh": {}}
+
         for th in master_history:
             t_id = th.get("team_id")
-            sp = th.get("velocity_sp")
+            sp = th.get("velocity_sp") or th.get("velocity_achieved")
             if t_id and sp:
                 capacity["team_sp"][t_id] = float(sp) * 0.8
+
+        for eng in master_engineers:
+            e_id = eng.get("engineer_id")
+            rate = float(eng.get("capacity_rate") or 0.0)
+            if e_id:
+                capacity["engineer_hh"][e_id] = 80.0 * rate
 
         updated_plan = copy.deepcopy(prev_plan)
 
