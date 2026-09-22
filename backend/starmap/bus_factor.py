@@ -403,14 +403,22 @@ def starmap_summary(
 
     linked = link_risk_to_tasks(plan, spof, engineers, estimates)
     index = competency_index(engineers)
+
+    # Компетенции без носителей не связываются через инженеров (их нет), поэтому
+    # задачи берём прямо из требований плана.
+    missing_tasks = {
+        entry["name"]: sorted(entry["tasks"])
+        for entry in required.values()
+        if entry["name"] in set(missing)
+    }
     competencies = [
         {
             "competency": name,
             "engineers_count": count,
             "bus_factor": count,
             "is_risk": count <= 1,
-            "linked_task_ids": ([t["task_id"] for t in linked.get(name, [])] or sorted(
-                next((set(e["tasks"]) for e in required.values() if e["name"] == name), set()))),
+            "linked_task_ids": ([t["task_id"] for t in linked.get(name, [])]
+                                or missing_tasks.get(name, [])),
             "engineer_ids": sorted(
                 next((e["engineers"] for e in index.values() if e["name"] == name), set())
             ),
@@ -425,6 +433,7 @@ def starmap_summary(
         "linked_tasks": linked,
         "single_points_of_failure": spof,
         "missing_competencies": missing,
+        "missing_competency_tasks": missing_tasks,
         "absence_impact": {
             engineer["engineer_id"]: absence_impact(
                 engineer["engineer_id"], plan, engineers, estimates)
