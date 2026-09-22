@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from typing import Any
+import pandas as pd
 import streamlit as st
 from streamlit_agraph import agraph, Node, Edge, Config
 
@@ -181,3 +182,73 @@ def render_star_map_view(competencies: Any) -> None:
 
         else:
             st.caption("Выберите красную звезду на графе, чтобы увидеть задачи под риском.")
+
+    _render_recommendations(competencies.get("recommendations") or {})
+    _render_team_bus_factor(competencies.get("team_bus_factor") or {})
+
+
+STATUS_ORDER = {"missing": 0, "single": 1, "borrowed": 2, "ok": 3}
+
+
+def _tasks_word(n: int) -> str:
+    return "задача" if n % 10 == 1 and n % 100 != 11 else (
+        "задачи" if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14 else "задач")
+
+
+def _render_recommendations(recs: dict[str, Any]) -> None:
+    """Кого нанять и кого обучить — ответ экспертов: главное после Bus Factor."""
+    hire, train = recs.get("hire") or [], recs.get("train") or []
+    if not hire and not train:
+        return
+    st.subheader("Что делать")
+    col_hire, col_train = st.columns(2)
+    with col_hire:
+        st.markdown("**Нанять** — ролей нет ни у одного инженера")
+        for item in hire:
+            n = len(item.get("tasks") or [])
+            line = f"- **{item['role']}** — {item['hours']:g} ч, {n} {_tasks_word(n)}"
+            alt = (item.get("train_instead") or [None])[0]
+            if alt:
+                line += f"; быстрее — обучить {alt['engineer_id']} ({alt['why']})"
+            st.markdown(line)
+        if not hire:
+            st.caption("Все роли плана есть в компании.")
+    with col_train:
+        st.markdown("**Обучить** — роль держится на одном человеке")
+        for item in train:
+            cand = item.get("candidate") or {}
+            n = len(item.get("tasks") or [])
+            st.markdown(
+                f"- **{cand.get('engineer_id', '—')}** ({cand.get('role', '')}) → «{item['role']}»: "
+                f"{cand.get('why', '')}. Сейчас {n} {_tasks_word(n)} только на {item['owner_id']}")
+        if not train:
+            st.caption("Ролей с единственным носителем нет.")
+
+
+def _render_team_bus_factor(teams: dict[str, Any]) -> None:
+    """Bus Factor внутри команды (ответ экспертов: считать по команде)."""
+    if not teams:
+        return
+    st.subheader("Bus Factor внутри команд")
+    col_team, col_filter = st.columns([2, 1])
+    team = col_team.selectbox("Команда", options=sorted(teams), key="bf_team")
+    only_risks = col_filter.toggle("Только риски", value=True, key="bf_only_risks")
+    data = teams[team]
+    rows = sorted(data.get("rows") or [],
+                  key=lambda r: (STATUS_ORDER.get(r.get("status"), 9), -(r.get("hours") or 0)))
+    if only_risks:
+        rows = [r for r in rows if r.get("status") != "ok"]
+    if not rows:
+        st.success("В команде нет компетенций с Bus Factor ≤ 1.")
+        return
+    table = pd.DataFrame([{
+        "Компетенция": r["competency"] + ("" if r.get("level") == "role" else f" ({r.get('role', '')})"),
+        "Bus Factor": r.get("bus_factor", 0),
+        "Носители в команде": ", ".join(r.get("in_team") or []) or "—",
+        "Состояние": r.get("status_label", ""),
+        "Часов в плане": round(r.get("hours") or 0),
+        "Задач": len(r.get("tasks") or []),
+    } for r in rows])
+    st.dataframe(table, hide_index=True, use_container_width=True)
+    st.caption("Роль — строка без скобок; технология роли — в скобках. «Зависим от других "
+               "команд» — в команде носителей нет, планировщик привлекает людей извне.")
