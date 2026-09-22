@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 import copy
 import tempfile
@@ -266,7 +267,9 @@ def process_baseline(file_bytes: bytes) -> dict[str, Any]:
     команды — средний velocity × 0.8 (backend.recalculation.pipeline.week0_from_excel).
     """
     state = week0_from_excel(file_bytes)
-    return {key: state[key] for key in ("parsed", "clean_deps", "plan", "alerts", "starmap")}
+    result = {key: state[key] for key in ("parsed", "clean_deps", "plan", "alerts", "starmap")}
+    result["data_quality"] = list((state.get("report") or {}).get("data_quality") or [])
+    return result
 
 
 @st.cache_data(show_spinner="Применение факта и пересчет текущего плана...")
@@ -300,6 +303,143 @@ def init_session_state() -> None:
     if "calculated_plans" not in st.session_state:
         st.session_state.calculated_plans = {}  # Ключи: "baseline", 1, 2, ..., 6
         st.session_state.master_dataset = None  # Сырые данные Недели 0
+    st.session_state.setdefault("fact_files", {})     # спринт → (имя файла, байты)
+    st.session_state.setdefault("uploader_nonce", 0)  # новый ключ = пустой загрузчик
+
+
+def _reset_uploaders() -> None:
+    """Streamlit хранит файл в загрузчике между перезапусками: без смены ключа
+    тот же файл обрабатывался бы снова и снова (бесконечный пересчёт)."""
+    st.session_state.uploader_nonce = st.session_state.get("uploader_nonce", 0) + 1
+
+
+def _recalculate_from(sprint: int, master: dict[str, Any]) -> tuple[int, str | None]:
+    """Пересчитывает спринты начиная с sprint по сохранённым файлам факта.
+
+    Returns:
+        (последний успешно пересчитанный спринт, текст ошибки или None).
+    """
+    plans = st.session_state.calculated_plans
+    files = st.session_state.fact_files
+    for j in range(sprint, 7):
+        plans.pop(j, None)
+    last = sprint - 1
+    for j in range(sprint, 7):
+        if j not in files:
+            break
+        prev_plan = plans["baseline"]["plan"] if j == 1 else plans[j - 1]["plan"]
+        try:
+            plans[j] = process_fact(prev_plan, master["clean_deps"],
+                                    master["parsed"]["engineers_profiles"], master["parsed"]["estimates"],
+                                    master["parsed"]["team_history"], files[j][1])
+        except Exception as exc:  # noqa: BLE001 — показываем пользователю, не роняем страницу
+            name = files[j][0]
+            for k in range(j, 7):
+                files.pop(k, None)
+            return last, f"Спринт {j} ({name}): {exc}"
+        last = j
+    return last, None
+
+
+def _file_sprint_mismatch(name: str, sprint: int) -> str | None:
+    """Предупреждение, если в имени файла явно другой номер спринта (Sprint_3 в слот 2)."""
+    match = re.search(r"(?:sprint|спринт)[ _-]*(\d+)", name, flags=re.IGNORECASE)
+    if match and int(match.group(1)) != sprint:
+        return (f"Похоже, это файл спринта {match.group(1)}, а загружается спринт {sprint}. "
+                "Проверьте файл.")
+    return None
+
+
+def _accept_fact(sprint: int, uploaded: Any, master: dict[str, Any], confirmed: bool = False) -> None:
+    """Сохраняет файл спринта и пересчитывает его и все следующие загруженные спринты.
+
+    Файл с другим номером спринта в имени не применяется без подтверждения.
+    """
+    name, data = (uploaded if isinstance(uploaded, tuple) else (uploaded.name, uploaded.getvalue()))
+    if not confirmed and _file_sprint_mismatch(name, sprint):
+        st.session_state.pending_fact = (sprint, name, data)
+        _reset_uploaders()
+        st.rerun()
+    st.session_state.pop("pending_fact", None)
+    st.session_state.fact_files[sprint] = (name, data)
+    warning = None
+    later = [j for j in st.session_state.fact_files if j > sprint]
+    last, error = _recalculate_from(sprint, master)
+    if error:
+        message = ("error", f"Не удалось пересчитать план. {error}")
+    elif later and last > sprint:
+        message = ("success", f"Спринт {sprint} заменён; спринты {sprint + 1}–{last} "
+                              "пересчитаны заново по уже загруженным файлам.")
+    else:
+        message = ("success", f"Факт спринта {sprint} учтён, план пересчитан.")
+    st.session_state.fact_message = message
+    st.session_state.pop(f"replace_{sprint}", None)
+    _reset_uploaders()
+    st.rerun()
+
+
+def render_fact_uploads(master: dict[str, Any]) -> None:
+    """Сайдбар: загруженные спринты с кнопками «Заменить» / «Удалить» и загрузчик следующего."""
+    plans = st.session_state.calculated_plans
+    files = st.session_state.fact_files
+    nonce = st.session_state.uploader_nonce
+
+    message = st.session_state.pop("fact_message", None)
+    if message:
+        {"error": st.sidebar.error, "warning": st.sidebar.warning}.get(
+            message[0], st.sidebar.success)(message[1])
+
+    pending = st.session_state.get("pending_fact")
+    if pending:
+        sprint, name, data = pending
+        st.sidebar.warning(f"{_file_sprint_mismatch(name, sprint)} Файл «{name}» пока не применён.")
+        col_yes, col_no = st.sidebar.columns(2)
+        if col_yes.button("Всё равно загрузить", key="pending_yes", use_container_width=True):
+            _accept_fact(sprint, (name, data), master, confirmed=True)
+        if col_no.button("Отмена", key="pending_no", use_container_width=True):
+            st.session_state.pop("pending_fact", None)
+            st.rerun()
+
+    for i in range(1, 7):
+        if i in plans:
+            name = files.get(i, ("файл загружен",))[0]
+            with st.sidebar.expander(f"Спринт {i} · факт загружен", expanded=False):
+                st.caption(name)
+                col_replace, col_delete = st.columns(2)
+                if col_replace.button("Заменить", key=f"replace_btn_{i}", use_container_width=True,
+                                      help="Загрузить другой файл факта за этот спринт"):
+                    st.session_state[f"replace_{i}"] = not st.session_state.get(f"replace_{i}", False)
+                    st.rerun()
+                if col_delete.button("Удалить", key=f"delete_btn_{i}", use_container_width=True,
+                                     help="Убрать факт этого спринта и всех следующих"):
+                    for j in range(i, 7):
+                        plans.pop(j, None)
+                        files.pop(j, None)
+                    last_text = f"спринта {i}" if i == 6 else f"спринтов {i}–6"
+                    st.session_state.fact_message = (
+                        "success", f"Факт {last_text} удалён. Загрузите спринт {i} заново.")
+                    _reset_uploaders()
+                    st.rerun()
+                if st.session_state.get(f"replace_{i}"):
+                    later = [j for j in plans if isinstance(j, int) and j > i]
+                    if later:
+                        st.caption(f"Спринты {i + 1}–{max(later)} пересчитаются заново "
+                                   "по уже загруженным файлам.")
+                    new_fact = st.file_uploader(f"Новый файл факта спринта {i}", type=["xlsx"],
+                                                key=f"reupload_fact_{i}_{nonce}")
+                    if new_fact:
+                        _accept_fact(i, new_fact, master)
+        else:
+            # Разблокируем только следующий по порядку спринт
+            fact_file = st.sidebar.file_uploader(
+                f"Загрузить факт Спринта {i}",
+                type=["xlsx"],
+                key=f"upload_fact_{i}_{nonce}",
+                help="Файл в формате датасета с накопленными часами — как в demo_scenarios/.",
+            )
+            if fact_file:
+                _accept_fact(i, fact_file, master)
+            break
 
 
 def render_kpi_widgets(baseline_tasks: list[dict[str, Any]], current_tasks: list[dict[str, Any]],
@@ -352,7 +492,7 @@ def render_kpi_widgets(baseline_tasks: list[dict[str, Any]], current_tasks: list
             return
         sd_in_norm = sd_norm[0] <= sd_val <= sd_norm[1]
         st.metric(
-            label=f"Sprint {latest_sd['sprint']} Say/Do Ratio (Норма {sd_norm[0]}-{sd_norm[1]}%)",
+            label=f"Say/Do Ratio · спринт {latest_sd['sprint']} (Норма {sd_norm[0]}-{sd_norm[1]}%)",
             value=f"{sd_val:.1f}%",
             delta="В пределах нормы" if sd_in_norm else "Отклонение от нормы",
             delta_color="normal" if sd_in_norm else "inverse"
@@ -385,6 +525,8 @@ def main() -> None:
             try:
                 base_state = process_baseline(uploaded_file.getvalue())
                 st.session_state.master_dataset = base_state
+                st.session_state.master_name = uploaded_file.name
+                st.session_state.fact_files = {}
                 st.session_state.calculated_plans["baseline"] = {
                     "plan": base_state["plan"],
                     "alerts": base_state["alerts"],
@@ -401,52 +543,15 @@ def main() -> None:
     st.sidebar.markdown("### Загрузка данных")
 
     with st.sidebar.expander("Мастер-датасет · Неделя 0", expanded=False):
+        st.caption(st.session_state.get("master_name") or "Датасет загружен.")
         if st.button("Сбросить весь план и начать заново", use_container_width=True):
             st.session_state.calculated_plans = {}
             st.session_state.master_dataset = None
+            st.session_state.fact_files = {}
+            _reset_uploaders()
             st.rerun()
 
-    master = st.session_state.master_dataset
-
-    for i in range(1, 7):
-        # Если спринт уже загружен
-        if i in st.session_state.calculated_plans:
-            with st.sidebar.expander(f"Спринт {i} · факт загружен", expanded=False):
-                st.success(f"Данные за Спринт {i} учтены в плане.")
-                new_fact = st.file_uploader(f"Перезалить факт Спринта {i}", type=["xlsx"], key=f"reupload_fact_{i}")
-                if new_fact:
-                    try:
-                        prev_plan = st.session_state.calculated_plans["baseline"]["plan"] if i == 1 else \
-                            st.session_state.calculated_plans[i - 1]["plan"]
-                        new_state = process_fact(prev_plan, master["clean_deps"],
-                                                 master["parsed"]["engineers_profiles"], master["parsed"]["estimates"],
-                                                 master["parsed"]["team_history"], new_fact.getvalue())
-                        st.session_state.calculated_plans[i] = new_state
-                        # Очищаем все последующие спринты, так как история изменилась
-                        for j in range(i + 1, 7):
-                            st.session_state.calculated_plans.pop(j, None)
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Ошибка загрузки Спринта {i}")
-        # Если спринт еще не загружен (разблокируем только следующий по порядку)
-        else:
-            fact_file = st.sidebar.file_uploader(
-                f"Загрузить факт Спринта {i}",
-                type=["xlsx"],
-                key=f"upload_fact_{i}"
-            )
-            if fact_file:
-                try:
-                    prev_plan = st.session_state.calculated_plans["baseline"]["plan"] if i == 1 else \
-                        st.session_state.calculated_plans[i - 1]["plan"]
-                    new_state = process_fact(prev_plan, master["clean_deps"], master["parsed"]["engineers_profiles"],
-                                             master["parsed"]["estimates"], master["parsed"]["team_history"],
-                                             fact_file.getvalue())
-                    st.session_state.calculated_plans[i] = new_state
-                    st.rerun()
-                except Exception as e:
-                    st.sidebar.error("Не удалось пересчитать план: неверный формат файла.")
-            break  # Останавливаем цикл, чтобы не показывать загрузчики для N+2
+    render_fact_uploads(st.session_state.master_dataset)
 
     st.sidebar.markdown("---")
 
@@ -488,7 +593,8 @@ def main() -> None:
     if page == "План (PI-цикл)":
         render_plan_view(plan_dict, selected_mode_label)
     elif page == "Риски и Алерты":
-        render_risk_view(alerts)
+        render_risk_view(alerts, plan_dict.get("resolved_alerts") or [],
+                         (st.session_state.master_dataset or {}).get("data_quality") or [])
     elif page == "Звёздная карта":
         render_star_map_view(starmap)
 

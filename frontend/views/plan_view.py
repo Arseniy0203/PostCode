@@ -7,6 +7,7 @@ from typing import Any
 
 import streamlit as st
 
+from .labels import DECISION_LABELS, STATUS_LABELS, decision_label
 from .task_card import render_task_card
 
 
@@ -53,6 +54,24 @@ def render_plan_view(plan: dict[str, Any], view_mode_label: str) -> None:
         st.warning("Нет данных для отображения.")
         return
 
+    # --- Сводка: что решил планировщик ---
+    open_tasks = [t for t in tasks if t.get("decision")]
+    included = [t for t in open_tasks if t.get("decision") == "included"]
+    partial = [t for t in included if t.get("reason_code") == "PARTIAL_TARGET"]
+    postponed = [t for t in open_tasks if t.get("decision") == "postponed"]
+    cancelled = [t for t in open_tasks if t.get("decision") == "cancelled"]
+    done = [t for t in included if t.get("status") == "Done"]
+    summary = (f"В квартале **{len(included)}** из {len(open_tasks)} задач"
+               + (f" (выполнено {len(done)})" if done else "")
+               + (f", из них с частичной целью — {len(partial)}" if partial else "")
+               + f". Перенесено: **{len(postponed)}**"
+               + (f", отменено: **{len(cancelled)}**" if cancelled else "") + ".")
+    st.markdown(summary)
+    if partial:
+        st.caption("Частичная цель — для части ролей (руководитель проекта, поддержка, 1С) нет "
+                   "людей в компании: остальная работа идёт, цель понижена по справочнику "
+                   "«Варианты выбора цели». Подробности — в карточке задачи.")
+
     # --- Блок фильтров ---
     st.markdown("### Фильтры")
     col1, col2, col3, col4 = st.columns(4)
@@ -65,9 +84,11 @@ def render_plan_view(plan: dict[str, Any], view_mode_label: str) -> None:
     with col2:
         sel_prodf = st.selectbox("Инициатива (PRODF)", options=["Все"] + prodfs)
     with col3:
-        sel_status = st.selectbox("Статус", options=["Все", "Done", "InProgress", "ToDo"])
+        sel_status = st.selectbox("Статус", options=["Все", *STATUS_LABELS],
+                                  format_func=lambda v: STATUS_LABELS.get(v, v))
     with col4:
-        sel_decision = st.selectbox("Решение", options=["Все", "included", "postponed", "cancelled"])
+        sel_decision = st.selectbox("Решение", options=["Все", *DECISION_LABELS],
+                                    format_func=lambda v: DECISION_LABELS.get(v, v))
 
     # Применение фильтров
     filtered_tasks = tasks
@@ -99,8 +120,6 @@ def render_plan_view(plan: dict[str, Any], view_mode_label: str) -> None:
     # --- Сетка спринтов ---
     st.markdown("### Распределение по спринтам")
 
-    # Создаем вкладки для 6 спринтов + 1 для перенесенных/отмененных
-    tabs = st.tabs([f"Спринт {i}" for i in range(1, 7)] + ["Отложенные / Отмененные"])
 
     # Группировка задач
     sprint_groups: dict[int, list] = {i: [] for i in range(1, 8)}
@@ -117,6 +136,10 @@ def render_plan_view(plan: dict[str, Any], view_mode_label: str) -> None:
             # Done до квартала — история, в сетку спринтов не попадает
             sprint_groups[7].append(t)
 
+    # Вкладки для 6 спринтов + 1 для перенесённых/отменённых, в названии — число задач
+    tabs = st.tabs([f"Спринт {i} · {len(sprint_groups[i])}" for i in range(1, 7)]
+                   + [f"Перенесённые / отменённые · {len(sprint_groups[7])}"])
+
     # Отрисовка задач в соответствующих вкладках
     for i, tab in enumerate(tabs):
         sprint_idx = i + 1
@@ -129,13 +152,17 @@ def render_plan_view(plan: dict[str, Any], view_mode_label: str) -> None:
             # Выводим задачи компактными карточками
             for t in tasks_in_sprint:
                 color = get_status_color(t.get("status", ""), t.get("decision", ""))
-                sp = t.get("estimation_sp", 0)
-                decision = t.get("decision", "unknown").upper()
+                sp = t.get("estimation_sp") or 0
+                sp = f"{sp:g}" if isinstance(sp, (int, float)) else sp
+                decision = decision_label(t)
+                if t.get("reason_code") == "PARTIAL_TARGET":
+                    decision += " · частичная цель"
+                status = STATUS_LABELS.get(t.get("status"), t.get("status", ""))
 
                 st.markdown(
                     f"""
                     <div style="border-left: 3px solid {color}; padding: 10px 14px; margin-bottom: 8px; background: #F7F8FA; border-radius: 4px;">
-                        <strong>{t.get('task_id')}</strong> | {t.get('team_id', 'Unassigned')} | SP: {sp} | {decision}<br>
+                        <strong>{t.get('task_id')}</strong> | {t.get('team_id', 'Unassigned')} | SP: {sp} | {status} | {decision}<br>
                         <small>{t.get('summary', '')}</small>
                     </div>
                     """,
