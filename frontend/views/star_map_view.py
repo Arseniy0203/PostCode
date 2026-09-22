@@ -105,7 +105,8 @@ def render_star_map_view(competencies: Any) -> None:
                 for task in tasks_at_risk:
                     task_id = task.get("task_id", "Unknown")
                     prodf = task.get("prodf_id", "Unknown PRODF")
-                    st.markdown(f"- ⚠️ Задача: `{task_id}` (Инициатива: `{prodf}`)")
+                    role = task.get("role", "N/A")
+                    st.markdown(f"- ⚠️ Задача: `{task_id}` (Инициатива: `{prodf}`) | Роль: `{role}`")
             else:
                 st.markdown("- *Зависимых задач в текущем плане не обнаружено.*")
 

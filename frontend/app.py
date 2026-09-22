@@ -3,14 +3,15 @@
 Точка входа Streamlit-приложения сервиса PI-планирования.
 
 Навигация между страницами через sidebar, поддержка режимов Baseline/Current
-и безопасная загрузка данных.
+и безопасная загрузка данных с пересчетом факта.
 """
 
 from __future__ import annotations
 
-import json
 import os
 import sys
+import copy
+import tempfile
 from typing import Any
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -20,17 +21,18 @@ if project_root not in sys.path:
 
 import streamlit as st
 
+from backend.ingestion.parse_dataset import parse_excel, filter_orphan_dependencies
+from backend.planning.scheduler import build_baseline_plan
+from backend.risk.alerts import collect_alerts
+from backend.starmap.bus_factor import starmap_summary
+from backend.recalculation.recalc import apply_sprint_fact
+from backend.kpi.metrics import kpi_breakdown
+
 from views.plan_view import render_plan_view
 from views.risk_view import render_risk_view
 from views.star_map_view import render_star_map_view
-from backend.kpi.metrics import kpi_breakdown
 
-# Константы конфигурации
-DEFAULT_DATA_PATH = os.path.join("data", "processed", "tasks.json")
-DEFAULT_ENGINEERS_PATH = os.path.join("data", "processed", "engineers_profiles.json")
 
-DATA_PATH = os.getenv("APP_DATA_PATH", DEFAULT_DATA_PATH)
-ENGINEERS_PATH = os.getenv("ENGINEERS_DATA_PATH", DEFAULT_ENGINEERS_PATH)
 APP_TITLE = os.getenv("APP_TITLE", "ПочтаТех: PI-Планирование")
 LOGO_PATH = os.getenv("LOGO_PATH", os.path.join("frontend", "assets", "logo_pochtatex.png"))
 
@@ -44,10 +46,12 @@ def inject_custom_css() -> None:
     st.markdown(
         """
         <style>
-        /* Скрытие стандартного хедера, футера и гамбургер-меню */
+        /* Скрытие дефолтного меню и футера, но оставляем header для кнопки сайдбара */
         #MainMenu {visibility: hidden;}
-        header {visibility: hidden;}
         footer {visibility: hidden;}
+        
+        /* Делаем фон хедера прозрачным */
+        header {background-color: transparent !important;}
 
         /* Корпоративный фон (мягкий градиент от светло-синего к белому) */
         .stApp {
@@ -104,90 +108,138 @@ def inject_custom_css() -> None:
         [data-testid="stSidebar"] p, [data-testid="stSidebar"] span, [data-testid="stSidebar"] label {
             color: #1e293b !important;
         }
+
+        /* Стилизация зоны drag-and-drop file_uploader */
+        [data-testid="stFileUploader"] > section {
+            background: rgba(255, 255, 255, 0.6) !important;
+            backdrop-filter: blur(10px) !important;
+            border: 2px dashed rgba(0, 51, 102, 0.4) !important;
+            border-radius: 16px !important;
+            box-shadow: 0 4px 15px rgba(31, 38, 135, 0.05) !important;
+            transition: all 0.3s ease;
+        }
+        [data-testid="stFileUploader"] > section:hover {
+            background: rgba(255, 255, 255, 0.9) !important;
+            border-color: rgba(0, 51, 102, 0.8) !important;
+        }
+
+        /* 1. Синий фон для всех кнопок и иконки-подсказки (?) */
+        [data-testid="stFileUploader"] button,
+        [data-testid="stTooltipIcon"] {
+            background-color: #003366 !important;
+            border: none !important;
+        }
+
+        /* 2. Белый цвет текста и иконок внутри синих кнопок */
+        [data-testid="stFileUploader"] button *,
+        [data-testid="stTooltipIcon"] * {
+            color: #ffffff !important;
+            fill: #ffffff !important;
+        }
+        
+        [data-testid="stFileUploader"] button:hover {
+            background-color: #001f3f !important;
+        }
+
+        /* 3. Обычный текст (имена файлов, размер, "Drag and drop") остается темным */
+        [data-testid="stFileUploaderDropzoneInstructions"] span,
+        [data-testid="stFileUploaderDropzoneInstructions"] small,
+        [data-testid="stFileInfo"] p,
+        [data-testid="stFileInfo"] small,
+        [data-testid="stFileInfo"] span {
+            color: #1e293b !important;
+        }
         </style>
         """,
         unsafe_allow_html=True
     )
 
 
-@st.cache_data
-def load_data(filepath: str) -> list[dict[str, Any]]:
-    """
-    Загружает данные задач из JSON файла.
+@st.cache_data(show_spinner="Сборка Baseline и проверка рисков...")
+def process_baseline(file_bytes: bytes) -> dict[str, Any]:
+    """Парсит исходный датасет и инициализирует Baseline-план."""
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+        tmp.write(file_bytes)
+        tmp_path = tmp.name
 
-    В случае отсутствия файла возвращает пустой список, чтобы UI не падал.
+    try:
+        parsed = parse_excel(tmp_path)
+        clean_deps, _ = filter_orphan_dependencies(parsed["task_dependencies"], parsed["tasks"])
 
-    Args:
-        filepath: Путь к JSON файлу с данными.
+        # Динамический сбор Capacity из Team_history
+        capacity = {"team_sp": {}, "engineer_hh": {}}
+        for th in parsed.get("team_history", []):
+            t_id = th.get("team_id")
+            sp = th.get("velocity_sp")
+            if t_id and sp:
+                # 20% резерв по ТЗ (Focus Factor 0.8)
+                capacity["team_sp"][t_id] = float(sp) * 0.8
 
-    Returns:
-        Список словарей с данными задач.
-    """
-    if not os.path.exists(filepath):
-        st.error(f"Файл данных не найден: {filepath}")
-        return []
+        plan = build_baseline_plan(
+            tasks=parsed["tasks"],
+            capacity=capacity,
+            dependencies=clean_deps,
+            engineers=parsed["engineers_profiles"],
+            estimates=parsed["estimates"]
+        )
 
-    with open(filepath, "r", encoding="utf-8") as f:
-        data = json.load(f)
+        alerts = [a.to_dict() for a in collect_alerts(plan, clean_deps, parsed["engineers_profiles"])]
+        starmap = starmap_summary(plan, parsed["engineers_profiles"], parsed["estimates"])
 
-    # Адаптация сырых данных из tasks.json под схему PlannedTask для демо
-    # В реальном приложении это делает backend/planning/scheduler.py
-    for i, task in enumerate(data):
-        if "decision" not in task:
-            # Мокируем решения для демонстрации UI
-            if task.get("status") == "Done":
-                task["decision"] = "included"
-                task["planned_start"] = 1
-                task["planned_end"] = 2
-                task["reason_code"] = "ALREADY_IN_PROGRESS"
-                task["reason_detail"] = "Задача уже завершена или в работе, план продолжает её выполнение."
-                task["reason_facts"] = {"task_id": task["task_id"]}
-            elif i % 5 == 0:
-                task["decision"] = "cancelled"
-                task["planned_start"] = None
-                task["planned_end"] = None
-                task["reason_code"] = "REQUIREMENTS_CHANGED"
-                task["reason_detail"] = "Изменились требования: заказчик исключил интеграцию."
-                task["reason_facts"] = {"task_id": task["task_id"], "note": "заказчик исключил интеграцию"}
-            elif i % 4 == 0:
-                task["decision"] = "postponed"
-                task["planned_start"] = None
-                task["planned_end"] = None
-                task["reason_code"] = "NO_RESOURCES"
-                task[
-                    "reason_detail"] = ("Не хватает 50 ч роли «Разработчик .net» в спринте 2: "
-                                        "нужно 130 ч, доступно 80 ч.")
-                task["reason_facts"] = {"task_id": task["task_id"], "role": "Разработчик .net", "need_hh": 130,
-                                        "available_hh": 80}
-            else:
-                task["decision"] = "included"
-                task["planned_start"] = (i % 6) + 1
-                task["planned_end"] = min(((i % 6) + 1 + int(task.get("estimation_sp", 1) // 4)), 6)
-                task["reason_code"] = "FITS_CAPACITY"
-                task[
-                    "reason_detail"] = (f"Поставлена в спринт {task['planned_start']}: "
-                                        f"команда {task.get('team_id')} укладывается в ёмкость.")
-                task["reason_facts"] = {"task_id": task["task_id"], "team_id": task.get("team_id")}
-    return data
+        return {
+            "parsed": parsed,
+            "clean_deps": clean_deps,
+            "plan": plan,
+            "alerts": alerts,
+            "starmap": starmap
+        }
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
 
-@st.cache_data
-def load_engineers(filepath: str) -> list[dict[str, Any]]:
-    """Загружает профили инженеров для Звездной карты."""
-    if not os.path.exists(filepath):
-        st.warning(f"Файл инженеров не найден: {filepath}")
-        return []
-    with open(filepath, "r", encoding="utf-8") as f:
-        return json.load(f)
+@st.cache_data(show_spinner="Применение факта и пересчет текущего плана...")
+def process_fact(base_data: dict[str, Any], fact_file_bytes: bytes) -> dict[str, Any]:
+    """Обрабатывает загруженный факт, обновляет Plan.current и пересчитывает риски."""
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+        tmp.write(fact_file_bytes)
+        tmp_path = tmp.name
+
+    try:
+        fact_parsed = parse_excel(tmp_path)
+        updated_plan = copy.deepcopy(base_data["plan"])
+
+        updated_current = apply_sprint_fact(
+            plan=updated_plan,
+            fact_tasks=fact_parsed["tasks"],
+            fact_spent=fact_parsed["spent_time_roles"]
+        )
+
+        if isinstance(updated_current, list):
+            updated_plan["current"] = updated_current
+        elif isinstance(updated_current, dict) and "current" in updated_current:
+            updated_plan = updated_current
+
+        # Гарантируем иммутабельность Baseline
+        updated_plan["baseline"] = base_data["plan"]["baseline"]
+
+        alerts = [a.to_dict() for a in
+                  collect_alerts(updated_plan, base_data["clean_deps"], base_data["parsed"]["engineers_profiles"])]
+        starmap = starmap_summary(updated_plan, base_data["parsed"]["engineers_profiles"],
+                                  base_data["parsed"]["estimates"])
+
+        return {
+            "plan": updated_plan,
+            "alerts": alerts,
+            "starmap": starmap
+        }
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
 
 def render_kpi_widgets(baseline_tasks: list[dict[str, Any]], current_tasks: list[dict[str, Any]]) -> None:
-    """Отрисовывает виджеты KPI в шапке приложения.
-
-    Args:
-        baseline_tasks: Срез плана на Неделе 0.
-        current_tasks: Текущий срез плана для расчета факта.
-    """
+    """Отрисовывает виджеты KPI в шапке приложения."""
     st.subheader("Квартальные KPI")
     st.caption("ℹ️ *Знаменатель обеих метрик зафиксирован на Неделе 0 в Baseline и строго неизменен.*")
 
@@ -201,7 +253,6 @@ def render_kpi_widgets(baseline_tasks: list[dict[str, Any]], current_tasks: list
     pi_norm = metrics["norms"]["pi_predictability"]
 
     say_do_list = metrics["say_do"]
-    # Берем самый актуальный непустой спринт (или последний)
     latest_sd = say_do_list[-1] if say_do_list else {"sprint": 1, "value": 0.0}
     sd_val = latest_sd["value"]
     sd_norm = metrics["norms"]["say_do"]
@@ -230,19 +281,13 @@ def render_kpi_widgets(baseline_tasks: list[dict[str, Any]], current_tasks: list
 def main() -> None:
     """Инициализирует Streamlit-страницу и sidebar-навигацию."""
     st.set_page_config(page_title=APP_TITLE, layout="wide")
-
-    # Применяем кастомные стили Glassmorphism
     inject_custom_css()
 
-    # Заглушка для логотипа проекта
     if os.path.exists(LOGO_PATH):
-        st.sidebar.image(LOGO_PATH, use_container_width=True)
-    else:
-        st.sidebar.markdown(f"*{LOGO_PATH} не найден*")
+        st.sidebar.image(LOGO_PATH, width="stretch")
 
     st.sidebar.title("🧭 Навигация")
 
-    # Имитация структуры плана (Baseline vs Current)
     view_mode = st.sidebar.radio(
         "Режим просмотра",
         options=["Текущий план (Current)", "Снимок (Baseline Неделя 0)"],
@@ -256,57 +301,53 @@ def main() -> None:
 
     st.sidebar.markdown("---")
     st.sidebar.info("Команда: Кронверкские псы\n\nХакатон: ПочтаТех")
+    st.sidebar.markdown("---")
 
-    # Загрузка данных
-    raw_tasks = load_data(DATA_PATH)
-    engineers = load_engineers(ENGINEERS_PATH)
+    # Зона 1: Базовая загрузка Master-файла
+    if "dataset_state" not in st.session_state:
+        st.title("📥 Загрузка данных планирования")
+        uploaded_file = st.file_uploader(
+            "Загрузите Master-датасет (.xlsx)",
+            type=["xlsx"],
+            help="Файл инициализации плана. Используется для формирования Baseline."
+        )
 
-    # Формируем объекты baseline и current.
-    baseline_tasks = raw_tasks
-    current_tasks = raw_tasks
+        if not uploaded_file:
+            st.warning("Пожалуйста, загрузите исходный Excel-файл датасета для начала работы.")
+            return  # Блокируем рендер остального UI, пока нет файла
 
-    active_plan = baseline_tasks if "Baseline" in view_mode else current_tasks
+        st.session_state.dataset_state = process_baseline(uploaded_file.getvalue())
 
-    # 1. Глобальные KPI всегда рендерятся сверху
-    render_kpi_widgets(baseline_tasks, current_tasks)
+    base_state = st.session_state.dataset_state
+
+    # Зона 2: Загрузка Факта (Сайдбар)
+    fact_file = st.sidebar.file_uploader(
+        "Загрузить результаты спринта (Факт)",
+        type=["xlsx"],
+        help="Загрузите файл с фактическими данными (списания часов) для пересчета плана"
+    )
+
+    if fact_file:
+        active_state = process_fact(base_state, fact_file.getvalue())
+        st.sidebar.success("Факт успешно загружен и пересчитан!")
+    else:
+        active_state = base_state
+
+    plan_dict = active_state["plan"]
+    alerts = active_state["alerts"]
+    starmap = active_state["starmap"]
+
+    # Рендер глобальных KPI
+    render_kpi_widgets(plan_dict.get("baseline", []), plan_dict.get("current", []))
     st.divider()
 
-    # 2. Роутинг страниц
+    # Роутинг интерфейсов
     if page == "План (PI-цикл)":
-        render_plan_view(active_plan)
-
+        render_plan_view(plan_dict, view_mode)
     elif page == "Риски и Алерты":
-        mock_alerts = [
-            {
-                "type": "red", "task_id": "DB-202", "prodf_id_at_risk": "PRODF-7124",
-                "description": "Прогнозируемое завершение задачи выходит за 12 неделю.", "sprint_detected": 5
-            },
-            {
-                "type": "yellow", "task_id": "MP-102", "prodf_id_at_risk": "PRODF-7125",
-                "description": "Сдвиг задачи вызывает каскадный сдвиг зависимой задачи MP-103.", "sprint_detected": 3
-            },
-            {
-                "type": "orange", "task_id": "SRV-4012", "prodf_id_at_risk": "PRODF-7125",
-                "description": "Дефицит часов роли «Разработчик .net» на следующий спринт (нужно 130, доступно 80).",
-                "sprint_detected": 1
-            }
-        ]
-        render_risk_view(mock_alerts)
-
+        render_risk_view(alerts)
     elif page == "Звёздная карта":
-        mock_competencies_data = {
-            "engineers": engineers,
-            "bus_factors": {
-                "Java": 12, "Spring Boot": 8, "PostgreSQL": 10,
-                "ARKit": 1, "Scala": 1, "TOGAF": 1
-            },
-            "linked_tasks": {
-                "ARKit": [{"task_id": "MOB-401", "prodf_id": "PRODF-8001"}],
-                "Scala": [{"task_id": "BD-101", "prodf_id": "PRODF-8002"}],
-                "TOGAF": [{"task_id": "ARC-001", "prodf_id": "PRODF-8005"}]
-            }
-        }
-        render_star_map_view(mock_competencies_data)
+        render_star_map_view(starmap)
 
 
 if __name__ == "__main__":

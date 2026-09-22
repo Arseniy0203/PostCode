@@ -9,12 +9,12 @@ from typing import Any
 
 def parse_excel(filepath: str) -> dict[str, Any]:
     """Парсит Excel-датасет в словарь из 6 сущностей."""
-    
-    xls = pd.ExcelFile(filepath)
-    sheet_name = 'Датасет(обновленный)'
-    if sheet_name not in xls.sheet_names:
-        sheet_name = xls.sheet_names[0] 
-        
+
+    with pd.ExcelFile(filepath) as xls:
+        sheet_name = 'Датасет(обновленный)'
+        if sheet_name not in xls.sheet_names:
+            sheet_name = xls.sheet_names[0]
+
     df = pd.read_excel(filepath, sheet_name=sheet_name, header=None)
 
     def find_row(keyword: str) -> int:

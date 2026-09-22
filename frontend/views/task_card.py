@@ -78,10 +78,20 @@ def render_task_card(task: dict[str, Any]) -> None:
             else:
                 st.write("Оценки в часах отсутствуют.")
 
-            start = task.get('planned_start')
-            end = task.get('planned_end')
+            start = task.get('planned_start_sprint')
+            end = task.get('planned_end_sprint')
             if start and end:
-                st.caption(f"Распределение (Allocation): Спринт {start} — Спринт {end}")
+                st.caption(f"Сроки: Спринт {start} — Спринт {end}")
+
+            allocation = task.get("allocation")
+            if allocation and isinstance(allocation, dict):
+                st.markdown("**Распределение по инженерам:**")
+                for s, engs in allocation.items():
+                    if isinstance(engs, dict):
+                        eng_str = ", ".join([f"{e} ({h}ч)" for e, h in engs.items()])
+                        st.caption(f"Спринт {s}: {eng_str}")
+                    else:
+                        st.caption(f"Спринт {s}: {engs}")
 
         with col_deps:
             st.markdown("#### 🔗 Зависимости")

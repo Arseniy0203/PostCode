@@ -38,10 +38,14 @@ def render_risk_view(alerts: list[Any]) -> None:
         sprint = alert.get("sprint_detected", "?")
         task_id = alert.get("task_id", "Неизвестно")
         desc = alert.get("description", "Описание отсутствует")
+        rec = alert.get("recommendation", "")
 
         render_func(f"### 🎯 PRODF: {prodf}\n"
                     f"**Спринт обнаружения:** {sprint} | **Источник:** {task_id}\n\n"
-                    f"{desc}")
+                    f"{desc}\n\n"
+                    f"💡 **Рекомендация:** {rec}" if rec else f"### 🎯 PRODF: {prodf}\n"
+                                                             f"**Спринт обнаружения:** {sprint} | "
+                                                             f"**Источник:** {task_id}\n\n{desc}")
 
     with tabs[0]:
         for a in red_alerts:

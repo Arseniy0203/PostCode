@@ -34,16 +34,19 @@ def get_status_color(status: str, decision: str) -> str:
     return status_map.get(status, "#9e9e9e")
 
 
-def render_plan_view(tasks: list[dict[str, Any]]) -> None:
+def render_plan_view(plan: dict[str, Any], view_mode: str) -> None:
     """
     Отрисовывает план по спринтам в виде канбан-сетки.
 
     Включает фильтры в верхней части и распределение задач по вкладкам спринтов.
 
     Args:
-        tasks: Список задач из current или baseline плана.
+        plan: Структура Plan (словарь с baseline и current).
+        view_mode: Выбранный режим (Baseline или Current).
     """
     st.title("📅 Квартальный PI-план (6 спринтов)")
+
+    tasks = plan.get("baseline", []) if "Baseline" in view_mode else plan.get("current", [])
 
     if not tasks:
         st.warning("Нет данных для отображения.")
@@ -106,7 +109,7 @@ def render_plan_view(tasks: list[dict[str, Any]]) -> None:
             sprint_groups[7].append(t)
         else:
             # Если задача растянута, показываем её в спринте старта
-            start_sprint = int(t.get("planned_start", 7))
+            start_sprint = int(t.get("planned_start_sprint", 7))
             if 1 <= start_sprint <= 6:
                 sprint_groups[start_sprint].append(t)
             else:
