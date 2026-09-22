@@ -164,3 +164,75 @@ def test_empty_estimated_hh_is_not_a_mismatch():
     text = " | ".join(a.description for a in check_data_quality(tasks, est, []))
     assert "A:" not in text and "B:" not in text
     assert "C: estimated_hh" in text
+
+
+# --- Чужие и битые файлы (жюри загружает что угодно) ---------------------------
+
+def _dataset_copy(tmp_path, edit, name="edited.xlsx"):
+    """Копия датасета организаторов с правкой edit(workbook, sheet)."""
+    from pathlib import Path
+    openpyxl = pytest.importorskip("openpyxl")
+    src = Path(__file__).resolve().parents[1] / "data" / "raw" /         "Хакатон_датасетс_правками_по_списку_вопросов_1.xlsx"
+    if not src.exists():
+        pytest.skip("нет датасета")
+    wb = openpyxl.load_workbook(src)
+    edit(wb, wb.worksheets[0])
+    path = tmp_path / name
+    wb.save(path)
+    return path
+
+
+def _row_of(ws, marker):
+    return next(r for r in range(1, ws.max_row + 1)
+                if isinstance(ws.cell(r, 1).value, str) and marker in ws.cell(r, 1).value)
+
+
+def test_renamed_sheet_with_extra_sheet_in_front(tmp_path):
+    from backend.ingestion.parse_dataset import parse_excel
+
+    def edit(wb, ws):
+        ws.title = "Данные"
+        wb.create_sheet("Инструкция", 0)["A1"] = "Не данные"
+    parsed = parse_excel(str(_dataset_copy(tmp_path, edit)))
+    assert len(parsed["tasks"]) == 45 and parsed["engineers_profiles"]
+
+
+def test_missing_optional_tables_do_not_block_upload(tmp_path):
+    from backend.ingestion.parse_dataset import parse_excel
+
+    def edit(wb, ws):
+        start = _row_of(ws, "Итог разработки")
+        for r in range(start, ws.max_row + 1):
+            for c in range(1, ws.max_column + 1):
+                ws.cell(r, c).value = None
+    parsed = parse_excel(str(_dataset_copy(tmp_path, edit)))
+    assert len(parsed["tasks"]) == 45
+
+
+def test_text_in_story_points_is_reported_not_fatal(tmp_path):
+    from backend.recalculation.pipeline import week0_from_excel
+
+    def edit(wb, ws):
+        start = _row_of(ws, "Tasks (Таблица задач и скоринга)")
+        header = start + 1
+        col = next(c for c in range(1, ws.max_column + 1)
+                   if ws.cell(header, c).value == "estimation_sp")
+        ws.cell(header + 5, col).value = "пять"
+    state = week0_from_excel(_dataset_copy(tmp_path, edit).read_bytes())
+    text = " ".join(a["description"] for a in state["report"]["data_quality"])
+    assert "нет оценки в Story Points" in text
+
+
+def test_not_a_dataset_gives_clear_reason(tmp_path):
+    from backend.ingestion.parse_dataset import parse_excel
+    openpyxl = pytest.importorskip("openpyxl")
+    broken = tmp_path / "broken.xlsx"
+    broken.write_bytes(b"not an excel file")
+    with pytest.raises(ValueError, match="не читается как Excel"):
+        parse_excel(str(broken))
+    wb = openpyxl.Workbook()
+    wb.active.append(["Имя", "Возраст"])
+    other = tmp_path / "other.xlsx"
+    wb.save(other)
+    with pytest.raises(ValueError, match="не похож на датасет"):
+        parse_excel(str(other))

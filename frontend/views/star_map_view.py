@@ -262,6 +262,28 @@ def _render_recommendations(recs: dict[str, Any]) -> None:
         if not train:
             st.caption("Ролей с единственным носителем нет.")
 
+    # Все варианты переобучения по смежным специальностям — свёрнуто, чтобы не перегружать
+    rows = []
+    for item in hire:
+        for cand in item.get("train_instead") or []:
+            rows.append({"Роль": item["role"], "Сейчас": "нет в компании",
+                         "Кого переобучить": f"{cand['engineer_id']} ({cand.get('role', '')})",
+                         "Почему он": cand.get("why", ""),
+                         "Команда": ", ".join(cand.get("teams") or [])})
+    for item in train:
+        for cand in [item.get("candidate"), *(item.get("alternatives") or [])]:
+            if cand:
+                rows.append({"Роль": item["role"], "Сейчас": f"только {item['owner_id']}",
+                             "Кого переобучить": f"{cand['engineer_id']} ({cand.get('role', '')})",
+                             "Почему он": cand.get("why", ""),
+                             "Команда": ", ".join(cand.get("teams") or [])})
+    if rows:
+        with st.expander(f"Все варианты переобучения по смежным специальностям · {len(rows)}"):
+            st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+            st.caption("Кандидат подходит, если у него смежная роль (например, «Аналитик» → "
+                       "«Аналитик 1С»), уже есть ключевой стек роли или общие навыки с "
+                       "единственным носителем. Первым в каждой роли идёт лучший вариант.")
+
 
 def _render_team_bus_factor(teams: dict[str, Any]) -> None:
     """Bus Factor внутри команды (ответ экспертов: считать по команде)."""

@@ -538,9 +538,11 @@ def main() -> None:
                 }
                 st.rerun()
             except Exception as e:
-                st.error("Не удалось прочитать мастер-датасет: неверный формат файла.")
+                # ValueError парсера — понятная причина по-русски; прочее — общий текст
+                reason = str(e) if isinstance(e, ValueError) and str(e) else                     "файл не похож на датасет в формате организаторов."
+                st.error(f"Не удалось прочитать мастер-датасет: {reason}")
                 with st.expander("Технические детали"):
-                    st.code(str(e))
+                    st.code(f"{type(e).__name__}: {e}")
         return  # Полная блокировка остального UI до загрузки Мастера
 
     # СОСТОЯНИЕ 1-6: Пайплайн загрузки спринтов в Сайдбаре
