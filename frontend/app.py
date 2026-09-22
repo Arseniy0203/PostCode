@@ -28,6 +28,11 @@ from backend.starmap.bus_factor import starmap_summary
 from backend.recalculation.recalc import apply_sprint_fact
 from backend.kpi.metrics import kpi_breakdown
 from backend.recalculation.baseline import save_baseline
+from backend.recalculation.pipeline import (
+    dataset_from_parsed,
+    fact_from_dataset_excel,
+    week0_from_excel,
+)
 
 from views.plan_view import render_plan_view
 from views.risk_view import render_risk_view
@@ -158,122 +163,39 @@ def inject_custom_css() -> None:
 
 @st.cache_data(show_spinner="Сборка Baseline и проверка рисков...")
 def process_baseline(file_bytes: bytes) -> dict[str, Any]:
-    """Парсит исходный датасет и инициализирует Baseline-план."""
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
-        tmp.write(file_bytes)
-        tmp_path = tmp.name
+    """Парсит исходный датасет и строит Baseline тем же конвейером, что и пересчёт.
 
-    try:
-        parsed = parse_excel(tmp_path)
-        clean_deps, _ = filter_orphan_dependencies(parsed["task_dependencies"], parsed["tasks"])
-
-        # Динамический сбор Capacity из Team_history и Engineers_profiles
-        capacity = {"team_sp": {}, "engineer_hh": {}}
-
-        for th in parsed.get("team_history", []):
-            t_id = th.get("team_id")
-            sp = th.get("velocity_sp") or th.get("velocity_achieved")
-            if t_id and sp:
-                capacity["team_sp"][t_id] = float(sp) * 0.8
-
-        # Планировщику нужны часы инженеров (1.0 ставки = 80 часов)
-        for eng in parsed.get("engineers_profiles", []):
-            e_id = eng.get("engineer_id")
-            rate = float(eng.get("capacity_rate") or 0.0)
-            if e_id:
-                capacity["engineer_hh"][e_id] = 80.0 * rate
-
-        plan = build_baseline_plan(
-            tasks=parsed["tasks"],
-            capacity=capacity,
-            dependencies=clean_deps,
-            engineers=parsed["engineers_profiles"],
-            estimates=parsed["estimates"]
-        )
-
-        plan = save_baseline(plan)
-
-        alerts = [a.to_dict() for a in collect_alerts(plan, clean_deps, parsed["engineers_profiles"])]
-        starmap = starmap_summary(plan, parsed["engineers_profiles"], parsed["estimates"])
-
-        return {
-            "parsed": parsed,
-            "clean_deps": clean_deps,
-            "plan": plan,
-            "alerts": alerts,
-            "starmap": starmap
-        }
-    finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
+    Задачи в работе планируются на остаток (смета − Spent_time_roles), ёмкость
+    команды — средний velocity × 0.8 (backend.recalculation.pipeline.week0_from_excel).
+    """
+    state = week0_from_excel(file_bytes)
+    return {key: state[key] for key in ("parsed", "clean_deps", "plan", "alerts", "starmap")}
 
 
 @st.cache_data(show_spinner="Применение факта и пересчет текущего плана...")
 def process_fact(prev_plan: dict[str, Any], master_deps: list[dict[str, Any]], master_engineers: list[dict[str, Any]],
                  master_estimates: list[dict[str, Any]], master_history: list[dict[str, Any]],
                  fact_file_bytes: bytes) -> dict[str, Any]:
-    """Обрабатывает факт, обновляет Plan.current на основе предыдущего плана и пересчитывает риски."""
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
-        tmp.write(fact_file_bytes)
-        tmp_path = tmp.name
+    """Обрабатывает факт, обновляет Plan.current на основе предыдущего плана и пересчитывает риски.
 
-    try:
-        fact_parsed = parse_excel(tmp_path)
-
-        fact_dict = {"tasks": {}}
-        for task in fact_parsed.get("tasks", []):
-            tid = str(task.get("task_id") or "").strip()
-            if tid:
-                fact_dict["tasks"][tid] = {"status": str(task.get("status", "")).strip(), "spent_hh": {}}
-
-        for spent in fact_parsed.get("spent_time_roles", []):
-            tid = str(spent.get("task_id") or "").strip()
-            if tid and tid in fact_dict["tasks"]:
-                for key, value in spent.items():
-                    if key.lower() not in ["task_id", "исходное время", ""]:
-                        try:
-                            hours = float(value)
-                            if hours > 0:
-                                fact_dict["tasks"][tid]["spent_hh"][key] = hours
-                        except (ValueError, TypeError):
-                            pass
-
-        # Реконструируем capacity из history и engineers
-        capacity = {"team_sp": {}, "engineer_hh": {}}
-
-        for th in master_history:
-            t_id = th.get("team_id")
-            sp = th.get("velocity_sp") or th.get("velocity_achieved")
-            if t_id and sp:
-                capacity["team_sp"][t_id] = float(sp) * 0.8
-
-        for eng in master_engineers:
-            e_id = eng.get("engineer_id")
-            rate = float(eng.get("capacity_rate") or 0.0)
-            if e_id:
-                capacity["engineer_hh"][e_id] = 80.0 * rate
-
-        updated_plan = copy.deepcopy(prev_plan)
-
-        updated_plan = apply_sprint_fact(
-            plan=updated_plan,
-            fact=fact_dict,
-            dependencies=master_deps,
-            engineers=master_engineers,
-            capacity=capacity
-        )
-
-        alerts = [a.to_dict() for a in collect_alerts(updated_plan, master_deps, master_engineers)]
-        starmap = starmap_summary(updated_plan, master_engineers, master_estimates)
-
-        return {
-            "plan": updated_plan,
-            "alerts": alerts,
-            "starmap": starmap
-        }
-    finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
+    Файл факта — датасет с НАКОПЛЕННЫМИ часами (как в demo_scenarios): уже учтённое
+    вычитается, в пересчёт идут часы именно за этот спринт.
+    """
+    fact = fact_from_dataset_excel(fact_file_bytes, prev_plan)
+    capacity = prev_plan.get("capacity") or dataset_from_parsed(
+        {"team_history": master_history, "engineers_profiles": master_engineers})["capacity"]
+    updated_plan = apply_sprint_fact(
+        plan=copy.deepcopy(prev_plan),
+        fact=fact,
+        dependencies=master_deps,
+        engineers=master_engineers,
+        capacity=capacity,
+    )
+    return {
+        "plan": updated_plan,
+        "alerts": [a.to_dict() for a in updated_plan.get("alerts") or []],
+        "starmap": starmap_summary(updated_plan, master_engineers, master_estimates),
+    }
 
 
 def init_session_state() -> None:
