@@ -21,12 +21,13 @@ if project_root not in sys.path:
 
 import streamlit as st
 
+from backend.export.report import fact_template_bytes
 from backend.starmap.bus_factor import starmap_summary
 from backend.recalculation.recalc import apply_sprint_fact
 from backend.kpi.metrics import kpi_breakdown
 from backend.recalculation.pipeline import (
     dataset_from_parsed,
-    fact_from_dataset_excel,
+    fact_from_any_excel,
     week0_from_excel,
 )
 
@@ -80,7 +81,7 @@ def process_fact(prev_plan: dict[str, Any], master_deps: list[dict[str, Any]], m
     Файл факта — датасет с НАКОПЛЕННЫМИ часами (как в demo_scenarios): уже учтённое
     вычитается, в пересчёт идут часы именно за этот спринт.
     """
-    fact = fact_from_dataset_excel(fact_file_bytes, prev_plan)
+    fact = fact_from_any_excel(fact_file_bytes, prev_plan)
     capacity = prev_plan.get("capacity") or dataset_from_parsed(
         {"team_history": master_history, "engineers_profiles": master_engineers})["capacity"]
     updated_plan = apply_sprint_fact(
@@ -278,11 +279,32 @@ def render_fact_uploads(master: dict[str, Any]) -> None:
                 f"Загрузить факт Спринта {i}",
                 type=["xlsx"],
                 key=f"upload_fact_{i}_{nonce}",
-                help="Файл в формате датасета с накопленными часами — как в demo_scenarios/.",
+                help="Подойдёт шаблон факта (кнопка ниже) или датасет с накопленными "
+                     "часами — как в demo_scenarios/.",
             )
             if fact_file:
                 _accept_fact(i, fact_file, master)
+            _render_fact_template(i)
             break
+
+
+def _render_fact_template(sprint: int) -> None:
+    """Шаблон факта: задачи этого спринта и плановые часы — остаётся вписать факт."""
+    plans = st.session_state.calculated_plans
+    plan = (plans.get(sprint - 1) or plans.get("baseline") or {}).get("plan")
+    engineers = ((st.session_state.master_dataset or {}).get("parsed") or {}).get(
+        "engineers_profiles") or []
+    if not plan:
+        return
+    try:
+        data = fact_template_bytes(plan, engineers, sprint)
+    except Exception:  # noqa: BLE001 — шаблон не должен ронять боковую панель
+        return
+    st.sidebar.download_button(
+        f"Шаблон факта спринта {sprint}", data=data,
+        file_name=f"Факт_спринта_{sprint}.xlsx", mime=XLSX_MIME, width="stretch",
+        help="Задачи спринта и часы по плану: команда правит статус и часы и "
+             "загружает файл обратно.")
 
 
 def render_kpi_widgets(baseline_tasks: list[dict[str, Any]], current_tasks: list[dict[str, Any]],

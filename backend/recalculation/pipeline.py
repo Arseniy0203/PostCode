@@ -304,6 +304,27 @@ def load_fact_excel(path: Path | str) -> dict[str, Any]:
     return fact_from_rows(frame.to_dict(orient="records"))
 
 
+def fact_from_any_excel(data: bytes | str | Path, plan: dict[str, Any]) -> dict[str, Any]:
+    """Факт спринта из любого из двух форматов.
+
+    Шаблон факта (task_id | status | роль: часы за спринт) — его отдаёт
+    интерфейс кнопкой «Скачать шаблон факта»; датасет с накопленными часами —
+    как в demo_scenarios. Различаем по первой строке: у шаблона это заголовок
+    таблицы, у датасета — маркер вида «Tasks (Таблица задач и скоринга)».
+    """
+    import io
+
+    import pandas as pd
+
+    source = io.BytesIO(data) if isinstance(data, bytes) else data
+    frame = pd.read_excel(source).dropna(how="all")
+    columns = [str(c).strip().lower() for c in frame.columns]
+    if "task_id" in columns:
+        frame.columns = [str(c).strip() for c in frame.columns]
+        return fact_from_rows(frame.to_dict(orient="records"))
+    return fact_from_dataset_excel(data, plan)
+
+
 def apply_uploaded_fact(plan: dict[str, Any], data: dict[str, Any], fact: dict[str, Any],
                         planner: Planner | None = None) -> dict[str, Any]:
     """Применяет загруженный пользователем факт за следующий спринт."""
