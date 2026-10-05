@@ -11,7 +11,7 @@ import os
 import re
 import sys
 import copy
-from io import BytesIO
+from pathlib import Path
 from typing import Any
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -177,6 +177,43 @@ def _rebuild_with_manual() -> None:
     _recalculate_from(1, base_state)
 
 
+DEMO_SCENARIO = os.path.join("demo_scenarios", "Scenario_3_Canceled_Task")
+
+
+def _load_demo(master_path: str) -> None:
+    """Демо: мастер-датасет и факты всех шести спринтов сразу.
+
+    Переключатель срезов («Неделя 0 → после спринта N») без фактов показывать
+    нечего, поэтому пример открывается уже с пройденным кварталом.
+    """
+    with st.spinner("Готовим пример: план квартала и факты шести спринтов…"):
+        master_bytes = Path(master_path).read_bytes()
+        base_state = process_baseline(master_bytes)
+        st.session_state.master_dataset = base_state
+        st.session_state.master_name = os.path.basename(master_path)
+        st.session_state.master_bytes = master_bytes
+        st.session_state.manual_defer = {}
+        st.session_state.calculated_plans = {"baseline": {
+            "plan": base_state["plan"],
+            "alerts": base_state["alerts"],
+            "starmap": base_state["starmap"],
+        }}
+        scenario = Path(project_root) / DEMO_SCENARIO
+        files = {}
+        for sprint in range(1, 7):
+            fact_file = scenario / f"Sprint_{sprint}_Fact.xlsx"
+            if fact_file.exists():
+                files[sprint] = (fact_file.name, fact_file.read_bytes())
+        st.session_state.fact_files = files
+        last, error = _recalculate_from(1, base_state)
+    st.session_state.fact_message = (
+        ("error", f"Пример загружен частично. {error}") if error else
+        ("success", f"Пример загружен: план Недели 0 и факты спринтов 1–{last}. "
+                    "Переключайте срезы в «Режиме просмотра»."))
+    _reset_uploaders()
+    st.rerun()
+
+
 def _fact_problem(name: str, data: bytes, sprint: int) -> str | None:
     """Что не так с файлом факта: чужой спринт, мастер-датасет или дубль.
 
@@ -301,10 +338,11 @@ def _render_fact_template(sprint: int) -> None:
     except Exception:  # noqa: BLE001 — шаблон не должен ронять боковую панель
         return
     st.sidebar.download_button(
-        f"Шаблон факта спринта {sprint}", data=data,
+        f"Бланк факта спринта {sprint} (заполнен планом)", data=data,
         file_name=f"Факт_спринта_{sprint}.xlsx", mime=XLSX_MIME, width="stretch",
-        help="Задачи спринта и часы по плану: команда правит статус и часы и "
-             "загружает файл обратно.")
+        help="В файле уже стоят задачи спринта, ожидаемый статус и часы по плану. "
+             "Отметьте, что пошло иначе, и загрузите его обратно. Если всё по плану — "
+             "загрузите без изменений.")
 
 
 def render_kpi_widgets(baseline_tasks: list[dict[str, Any]], current_tasks: list[dict[str, Any]],
@@ -377,9 +415,7 @@ def main() -> None:
             demo_requested = col_demo.button("Открыть пример на демо-данных", key="load_demo",
                                              width="stretch")
         if demo_requested:
-            with open(demo_path, "rb") as demo_file:
-                uploaded_file = BytesIO(demo_file.read())
-                uploaded_file.name = os.path.basename(demo_path)
+            _load_demo(demo_path)
         with st.sidebar:
             st.html(f'<div class="soft-sidebar-note">{icon("file")}<strong>Начните с данных</strong>'
                     '<p>Загрузите мастер-датасет, чтобы открыть план, риски и карту компетенций.</p></div>')

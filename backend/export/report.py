@@ -146,10 +146,11 @@ def fact_template_rows(plan: dict[str, Any], engineers: Iterable[dict[str, Any]]
         closes = field(task, "forecast_end_sprint") == sprint or end_sprint(task) == sprint
         if not hours and not closes:
             continue
+        # task_id и «статус» читает загрузчик, «Задача» — для человека
         row: dict[str, Any] = {
             "task_id": task_id(task),
-            "summary": field(task, "summary") or "",
-            "status": "Done" if closes else "InProgress",
+            "Задача": field(task, "summary") or "",
+            "статус": "Done" if closes else "InProgress",
         }
         for engineer, value in (hours or {}).items():
             role = role_of.get(str(engineer)) or str(engineer)
@@ -164,18 +165,21 @@ def fact_template_bytes(plan: dict[str, Any], engineers: Iterable[dict[str, Any]
     rows = fact_template_rows(plan, engineers, sprint)
     frame = pd.DataFrame(rows)
     howto = pd.DataFrame({f"Как заполнять факт спринта {sprint}": [
-        "Колонка status: Done — задача закрыта, InProgress — работа идёт, "
+        "Файл уже заполнен ПЛАНОМ на этот спринт: задачи, ожидаемый статус и часы по ролям.",
+        "Всё пошло по плану — загрузите файл обратно без изменений.",
+        "Что-то пошло иначе — поправьте только эти строки.",
+        "Колонка «статус»: Done — задача закрыта, InProgress — работа идёт, "
         "Cancelled — отменена заказчиком.",
         "Колонки ролей: часы, фактически потраченные В ЭТОМ спринте (не нарастающим итогом).",
-        "Задачу, которой не было в плане, можно дописать строкой — укажите task_id и часы.",
-        "Строку задачи, по которой в спринте не работали, оставьте с нулями или удалите.",
-        "Колонка summary — для чтения, система её не использует.",
+        "Задачу, которой не было в плане, допишите строкой: укажите task_id и часы.",
+        "По задаче в спринте не работали — поставьте нули или удалите строку.",
+        "Колонка «Задача» — для чтения, система её не использует.",
     ]})
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
         (frame if not frame.empty
-         else pd.DataFrame(columns=["task_id", "summary", "status"])).to_excel(
-            writer, sheet_name="Факт спринта", index=False)
+         else pd.DataFrame(columns=["task_id", "Задача", "статус"])).to_excel(
+            writer, sheet_name=f"Факт спринта {sprint}", index=False)
         howto.to_excel(writer, sheet_name="Как заполнять", index=False)
         _autosize(writer)
     return buffer.getvalue()
