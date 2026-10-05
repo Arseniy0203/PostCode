@@ -252,7 +252,8 @@ def _number(value: Any) -> Any:
 def _require(rows: list[dict[str, Any]], table: str, columns: tuple[str, ...]) -> None:
     """Таблица без обязательных колонок — ошибка сразу, а не битые данные дальше."""
     if not rows:
-        raise ValueError(f"Таблица {table} пуста или не найдена")
+        raise ValueError(f"в таблице «{table}» нет ни одной строки — похоже, это пустой "
+                         f"шаблон датасета. Заполните его своими данными и загрузите снова")
     missing = [c for c in columns if c not in rows[0]]
     if missing:
         raise ValueError(f"В таблице {table} нет колонок: {', '.join(missing)} "
