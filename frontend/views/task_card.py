@@ -57,7 +57,21 @@ def _render_facts(task: dict[str, Any]) -> None:
             st.markdown(f"- **{FACT_LABELS[key]}:** {_fact_value(key, facts[key])}")
 
 
-def render_task_card(task: dict[str, Any]) -> None:
+RISK_TITLES = {"red": "Критический риск", "yellow": "Каскадный сдвиг",
+               "orange": "Нехватка людей"}
+
+
+def _render_risks(risks: list[dict[str, Any]]) -> None:
+    """Риски этой задачи — чтобы не искать её на странице алертов."""
+    if not risks:
+        return
+    st.markdown("**Риски по задаче**")
+    for risk in risks:
+        title = RISK_TITLES.get(risk.get("type"), "Риск")
+        st.markdown(f"- **{title}.** {risk.get('description', '')}")
+
+
+def render_task_card(task: dict[str, Any], risks: list[dict[str, Any]] | None = None) -> None:
     """
     Отрисовывает детальную карточку задачи.
 
@@ -66,6 +80,7 @@ def render_task_card(task: dict[str, Any]) -> None:
 
     Args:
         task: Словарь с данными задачи (схема PlannedTask).
+        risks: алерты, которые касаются этой задачи (см. plan_view.task_risks).
     """
     decision = task.get("decision")
 
@@ -96,6 +111,7 @@ def render_task_card(task: dict[str, Any]) -> None:
         msg_type("\n\n".join(lines))
 
         _render_facts(task)
+        _render_risks(risks or [])
 
         # 3. Трудозатраты и зависимости
         col_labor, col_deps = st.columns(2)

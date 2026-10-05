@@ -182,6 +182,7 @@ def inject_custom_css() -> None:
 
         /* --- Кнопки: один акцент, без градиентов --- */
         .stButton > button,
+        [data-testid="stDownloadButton"] button,
         [data-testid="stFileUploader"] button,
         [data-testid="stFormSubmitButton"] button {
             background: var(--brand) !important;
@@ -194,8 +195,10 @@ def inject_custom_css() -> None:
             transition: background 0.15s ease;
         }
         .stButton > button *,
+        [data-testid="stDownloadButton"] button *,
         [data-testid="stFileUploader"] button * {color: #FFFFFF !important; fill: #FFFFFF !important;}
         .stButton > button:hover,
+        [data-testid="stDownloadButton"] button:hover,
         [data-testid="stFileUploader"] button:hover {
             background: var(--brand-dark) !important;
             border-color: var(--brand-dark) !important;
@@ -229,15 +232,29 @@ def inject_custom_css() -> None:
         button[data-baseweb="tab"][aria-selected="true"] p {color: var(--brand) !important;}
         div[data-baseweb="tab-highlight"] {background: var(--brand) !important;}
 
-        /* --- Уведомления: тонкая цветная полоса слева вместо заливки --- */
+        /* --- Уведомления: сдержанные, но цвет статуса сохраняем (красный,
+               жёлтый, синий): он отличает критический риск от подсказки --- */
         div[data-testid="stAlert"] {
             border-radius: 5px;
-            border: 1px solid var(--line);
-            border-left: 3px solid var(--brand);
-            background: var(--surface-alt);
             box-shadow: none;
         }
         div[data-testid="stAlert"] p {font-size: 0.86rem;}
+
+        /* --- Карточка алерта: цвет полосы = тип риска (см. risk_view) --- */
+        div[class*="st-key-alert-"] {
+            border-radius: 6px;
+            padding: 12px 14px;
+            margin-bottom: 10px;
+        }
+        div[class*="st-key-alert-"] p {font-size: 0.86rem;}
+        div[class*="st-key-alert-red"]    {background: #FDECEA; border-left: 4px solid #B3261E;}
+        div[class*="st-key-alert-yellow"] {background: #FFF6E5; border-left: 4px solid #9A6100;}
+        div[class*="st-key-alert-orange"] {background: #FFF1E8; border-left: 4px solid #B4540F;}
+        div[class*="st-key-alert-info"]   {background: var(--surface-alt); border-left: 4px solid #5B6472;}
+        .legend-dot {
+            display: inline-block; width: 9px; height: 9px;
+            border-radius: 50%; margin: 0 5px 0 12px;
+        }
 
         /* --- Радио и селект --- */
         div[role="radiogroup"] label p {font-size: 0.86rem !important;}
@@ -597,7 +614,7 @@ def main() -> None:
     st.divider()
 
     if page == "План (PI-цикл)":
-        render_plan_view(plan_dict, selected_mode_label)
+        render_plan_view(plan_dict, selected_mode_label, alerts, starmap)
     elif page == "Всё сразу или по плану":
         render_overload_view((st.session_state.master_dataset or {}).get("overload"))
     elif page == "Риски и Алерты":
