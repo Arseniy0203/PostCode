@@ -8,3 +8,6 @@ font = "sans serif"
 
 [client]
 toolbarMode = "viewer"   # без кнопки Deploy и меню разработчика
+
+[server]
+headless = true          # первый запуск не спрашивает email в терминале

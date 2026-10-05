@@ -6,8 +6,70 @@ from typing import Any
 
 import streamlit as st
 
+from backend.export.report import excel_bytes, pdf_bytes
 from .labels import DECISION_LABELS, STATUS_LABELS, decision_label
 from .task_card import render_task_card
+
+
+# Риск, о котором стоит знать прямо в сетке спринтов. info не берём: их много
+# и они не про срыв, им место на странице рисков.
+RISK_LABELS = {"red": "критический риск", "yellow": "каскадный сдвиг",
+               "orange": "нехватка людей"}
+RISK_ORDER = ["red", "yellow", "orange"]
+
+
+def task_risks(alerts: list[dict[str, Any]] | None) -> dict[str, list[dict[str, Any]]]:
+    """Алерты по задачам: и по самой задаче, и по тем, кого она задевает."""
+    by_task: dict[str, list[dict[str, Any]]] = {}
+    for alert in alerts or []:
+        if not isinstance(alert, dict) or alert.get("type") not in RISK_LABELS:
+            continue
+        for key in [alert.get("task_id"), *(alert.get("affected_task_ids") or [])]:
+            if key:
+                by_task.setdefault(key, []).append(alert)
+    return by_task
+
+
+def _risk_mark(risks: list[dict[str, Any]]) -> str:
+    """Самый тяжёлый риск задачи — подпись в строке спринта."""
+    for risk_type in RISK_ORDER:
+        if any(r.get("type") == risk_type for r in risks):
+            return RISK_LABELS[risk_type]
+    return ""
+
+
+@st.cache_data(show_spinner=False)
+def _export_files(tasks: list[dict[str, Any]], current_sprint: int, alerts: list[dict[str, Any]],
+                  starmap: dict[str, Any], team: str | None) -> tuple[bytes, bytes]:
+    """Excel и PDF для текущего среза. Кэш — чтобы не собирать файлы на каждый клик."""
+    plan = {"current": tasks, "current_sprint": current_sprint}
+    return (excel_bytes(plan, alerts, starmap, team=team),
+            pdf_bytes(plan, alerts, starmap, team=team))
+
+
+def _render_export(tasks: list[dict[str, Any]], plan: dict[str, Any], team: str | None,
+                   alerts: list[dict[str, Any]] | None, starmap: dict[str, Any] | None) -> None:
+    """Кнопки выгрузки плана: результат работы планировщика в файле."""
+    st.markdown("### Выгрузка плана")
+    scope = f"команда {team}" if team else "все команды, по листу и странице на каждую"
+    st.caption(f"Excel — колонки датасета «плановый результат», «будет включено в спринт» и "
+               f"«исполнитель» заполнены планировщиком, плюс листы «Алерты» и «Нанять и обучить». "
+               f"PDF — печатный отчёт. В выгрузке: {scope}.")
+    try:
+        xlsx, pdf = _export_files(tasks, int(plan.get("current_sprint") or 0),
+                                  alerts or [], starmap or {}, team)
+    except Exception as exc:  # noqa: BLE001 — страница не должна падать из-за выгрузки
+        st.warning(f"Не удалось собрать файлы выгрузки: {exc}")
+        return
+    suffix = f"_{team}" if team else ""
+    col_xlsx, col_pdf = st.columns(2)
+    col_xlsx.download_button(
+        "Скачать Excel", data=xlsx, file_name=f"Квартальный_план{suffix}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        width="stretch")
+    col_pdf.download_button(
+        "Скачать PDF", data=pdf, file_name=f"Квартальный_план{suffix}.pdf",
+        mime="application/pdf", width="stretch")
 
 
 def get_status_color(status: str, decision: str) -> str:
@@ -34,7 +96,9 @@ def get_status_color(status: str, decision: str) -> str:
     return status_map.get(status, "#9AA3B0")
 
 
-def render_plan_view(plan: dict[str, Any], view_mode_label: str) -> None:
+def render_plan_view(plan: dict[str, Any], view_mode_label: str,
+                     alerts: list[dict[str, Any]] | None = None,
+                     starmap: dict[str, Any] | None = None) -> None:
     """
     Отрисовывает план по спринтам в виде канбан-сетки.
 
@@ -43,6 +107,8 @@ def render_plan_view(plan: dict[str, Any], view_mode_label: str) -> None:
     Args:
         plan: Структура Plan (словарь с baseline и current).
         view_mode_label: Строка с названием текущего хронологического среза.
+        alerts: алерты текущего среза — попадают в выгрузку отдельным листом.
+        starmap: звёздная карта — из неё берётся план найма для выгрузки.
     """
     st.title(f"Квартальный план · {view_mode_label}")
 
@@ -100,6 +166,9 @@ def render_plan_view(plan: dict[str, Any], view_mode_label: str) -> None:
     if sel_decision != "Все":
         filtered_tasks = [t for t in filtered_tasks if t.get("decision") == sel_decision]
 
+    _render_export(filtered_tasks, plan, None if sel_team == "Все" else sel_team,
+                   alerts, starmap)
+
     st.markdown("---")
 
     # --- Поиск задачи ---
@@ -117,13 +186,16 @@ def render_plan_view(plan: dict[str, Any], view_mode_label: str) -> None:
         key="plan_task_search",
     )
     if picked != NOT_SELECTED:
-        render_task_card(task_mapping[picked])
+        chosen = task_mapping[picked]
+        render_task_card(chosen, task_risks(alerts).get(chosen.get("task_id")) or [])
 
     st.markdown("---")
 
     # --- Сетка спринтов ---
     st.markdown("### Распределение по спринтам")
-    st.caption("Нажмите на задачу, чтобы раскрыть карточку с причиной решения.")
+    st.caption("Нажмите на задачу, чтобы раскрыть карточку с причиной решения. "
+               "Если по задаче есть риск, он назван в строке и показан в карточке.")
+    risks_by_task = task_risks(alerts)
 
 
     # Группировка задач
@@ -180,8 +252,11 @@ def render_plan_view(plan: dict[str, Any], view_mode_label: str) -> None:
                     f"{{border-left: 3px solid {color} !important;}}</style>",
                     unsafe_allow_html=True,
                 )
+                risks = risks_by_task.get(t.get("task_id")) or []
+                mark = _risk_mark(risks)
                 label = (f"{t.get('task_id')} · {summary} — {t.get('team_id', 'без команды')} · "
-                         f"{sp} SP · {status} · {decision}")
+                         f"{sp} SP · {status} · {decision}"
+                         + (f" · {mark}" if mark else ""))
                 with st.container(key=key):
                     with st.expander(label):
-                        render_task_card(t)
+                        render_task_card(t, risks)
