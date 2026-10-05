@@ -323,13 +323,17 @@ def _parse_excel_bytes(data: bytes | str | Path) -> dict[str, Any]:
     return parse_excel(str(data) if isinstance(data, (str, Path)) else io.BytesIO(data))
 
 
-def week0_from_excel(data: bytes | str | Path, planner: Planner | None = None) -> dict[str, Any]:
+def week0_from_excel(data: bytes | str | Path, planner: Planner | None = None,
+                     defer: dict[str, str] | list[str] | None = None) -> dict[str, Any]:
     """План Недели 0 из загруженного Excel-датасета — тем же конвейером, что run_quarter.
 
     Задачи в работе планируются на остаток (смета − Spent_time_roles), ёмкость
     команды — средний velocity × 0.8, фантомные связи уходят в отчёт о качестве
     данных. Возвращает ключи, которые ждёт frontend/app.py (parsed, clean_deps,
     plan, alerts, starmap) и полный отчёт report.
+
+    defer — задачи, которые руководитель вручную снял с квартала (id или
+    {id: комментарий}): они не планируются, а их ёмкость достаётся остальным.
     """
     from backend.ingestion.parse_dataset import filter_orphan_dependencies
 
@@ -338,7 +342,7 @@ def week0_from_excel(data: bytes | str | Path, planner: Planner | None = None) -
     parsed = {**parsed, "task_dependencies": clean}
     dataset = dataset_from_parsed(parsed, [row["dependency"] for row in excluded]
                                   + list(parsed.get("duplicate_dependencies") or []))
-    plan = build_week0(dataset, planner)
+    plan = build_week0(dataset, planner, defer=defer)
     report = build_report(plan, dataset, planner)
     from backend.recalculation.overload import overload_report
     overload = _jsonable(overload_report(dataset, plan, report.get("strict_comparison")))
