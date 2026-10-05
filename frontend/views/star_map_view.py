@@ -40,12 +40,12 @@ def render_star_map_view(competencies: Any) -> None:
     NODE_SIZE_TECH = 26
     NODE_SIZE_ENG = 9
     FACE = "arial"
-    FONT_TECH = {"size": 28, "color": "#27272a", "face": FACE, "strokeWidth": 6,
+    FONT_TECH = {"size": 28, "color": "#1E293B", "face": FACE, "strokeWidth": 6,
                  "strokeColor": "#FFFFFF"}
     FONT_ENG = {"size": 19, "color": "#71717a", "face": FACE, "strokeWidth": 5,
                 "strokeColor": "#FFFFFF"}
     COLOR_CRITICAL = "#B3261E"  # Приглушённый красный: Bus Factor = 1
-    COLOR_NORMAL = "#f97316"  # Акцент Soft UI Dashboard
+    COLOR_NORMAL = "#294DA6"  # Акцент Soft UI Dashboard
     COLOR_ENG = "#9AA3B0"  # Нейтральный серый: инженеры
     COLOR_MISSING = "#B3261E"  # Контур красный, заливки нет: носителей нет вовсе
 
@@ -106,7 +106,7 @@ def render_star_map_view(competencies: Any) -> None:
         physics=True,
         hierarchical=False,
         nodeHighlightBehavior=True,
-        highlightColor="#f97316",
+        highlightColor="#294DA6",
         backgroundColor="#FFFFFF",
     )
     # Компактная раскладка: звёзды без носителей ни с чем не связаны, и без сильной
