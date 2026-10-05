@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import pandas as pd
 import streamlit as st
 
 from .labels import sprint_moment
+from .text import collapse_task_lists
 
 # Подтипы алертов — заголовки групп на вкладке «Наблюдения» и подписи карточек
 CATEGORY_LABELS = {
@@ -46,7 +48,7 @@ def _title(alert: dict[str, Any]) -> str:
     return f"**{head}**" + (f" — {label.lower()}" if label else "")
 
 
-def _render_alert_card(alert: dict[str, Any], index: int) -> None:
+def _render_alert_card(alert: dict[str, Any], index: Any) -> None:
     """Карточка с цветной полосой по типу риска.
 
     Встроенные st.error/st.warning/st.info дают только красный, жёлтый и синий —
@@ -56,13 +58,20 @@ def _render_alert_card(alert: dict[str, Any], index: int) -> None:
     since = alert.get("since_sprint")
     if alert.get("status") == "ongoing" and since is not None:
         moment = "держится с Недели 0" if not since else f"держится со спринта {since}"
-    text = f"{_title(alert)}\n\n{alert.get('description', '')}"
-    if alert.get("recommendation"):
-        text += f"\n\n**Что сделать:** {alert['recommendation']}"
-    text += f"\n\n:gray[{moment}]"
+    description, hidden = collapse_task_lists(alert.get("description", ""))
+    advice, hidden_advice = collapse_task_lists(alert.get("recommendation", ""))
+    text = f"{_title(alert)}\n\n{description}"
+    if advice:
+        text += f"\n\n**Что сделать:** {advice}"
     alert_type = alert.get("type") if alert.get("type") in TYPE_COLORS else "info"
-    with st.container(key=f"alert-{alert_type}-{alert.get('category')}-{index}"):
+    key = re.sub(r"[^0-9A-Za-z_-]+", "-", f"alert-{alert_type}-{alert.get('category')}-{index}")
+    with st.container(key=key):
         st.markdown(text)
+        tasks = sorted(set(hidden) | set(hidden_advice))
+        if tasks:
+            with st.expander(f"Все задачи · {len(tasks)}"):
+                st.markdown(", ".join(f"`{task}`" for task in tasks))
+        st.markdown(f":gray[{moment}]")
 
 
 def _render_list(alerts: list[dict[str, Any]], empty: str) -> None:
@@ -91,12 +100,9 @@ def _render_grouped(alerts: list[dict[str, Any]], empty: str) -> None:
         weight[label] = INFO_ORDER.index(category) if category in INFO_ORDER else len(INFO_ORDER)
     for label, items in sorted(groups.items(), key=lambda kv: (weight[kv[0]], -len(kv[1]))):
         with st.expander(f"{label} · {len(items)}"):
-            for alert in items:
-                text = alert.get("description", "")
-                if alert.get("recommendation"):
-                    text += f"\n\n**Что сделать:** {alert['recommendation']}"
-                st.markdown(text)
-                st.markdown("---")
+            # Те же карточки, что и на других вкладках: единый вид и свёрнутые списки
+            for position, alert in enumerate(items):
+                _render_alert_card(alert, f"{label}-{position}")
 
 
 def _render_data_quality(items: list[dict[str, Any]]) -> None:

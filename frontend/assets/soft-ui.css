@@ -190,3 +190,17 @@ button[data-baseweb="tab"][aria-selected="true"] { background: white; box-shadow
 @media (prefers-reduced-motion: reduce) {
   .stButton > button, .st-key-sidebar-nav [role="radiogroup"] > label { transition: none; }
 }
+
+/* Подписи загрузчика у Streamlit английские и настройкой не переводятся:
+   прячем размером шрифта и подставляем свои. */
+[data-testid="stFileUploaderDropzoneInstructions"] span { font-size: 0 !important; }
+[data-testid="stFileUploaderDropzoneInstructions"] span::after {
+  content: "Файл .xlsx, до 200 МБ";
+  font-size: .8rem;
+  color: var(--soft-muted);
+}
+[data-testid="stFileUploader"] button [data-testid="stMarkdownContainer"] p { font-size: 0 !important; }
+[data-testid="stFileUploader"] button [data-testid="stMarkdownContainer"] p::after {
+  content: "Выбрать файл";
+  font-size: .85rem;
+}
