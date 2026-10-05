@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 import pandas as pd
 import streamlit as st
+from .components import detail_grid, styled_table
 from streamlit_agraph import agraph, Node, Edge, Config
 
 
@@ -243,11 +244,10 @@ def _render_recommendations(recs: dict[str, Any]) -> None:
         st.markdown("**Нанять** — ролей нет ни у одного инженера")
         for item in hire:
             n = len(item.get("tasks") or [])
-            line = f"- **{item['role']}** — {item['hours']:g} ч, {n} {_tasks_word(n)}"
-            alt = (item.get("train_instead") or [None])[0]
-            if alt:
-                line += f"; быстрее — обучить {alt['engineer_id']} ({alt['why']})"
-            st.markdown(line)
+            alternative = (item.get("train_instead") or [None])[0]
+            detail_grid([("Нужная роль", item["role"]),
+                         ("Объём работы", f"{item['hours']:g} ч · {n} {_tasks_word(n)}"),
+                         ("Можно переобучить", f"{alternative['engineer_id']}: {alternative['why']}" if alternative else None)])
         if not hire:
             st.caption("Все роли плана есть в компании.")
     with col_train:
@@ -255,9 +255,9 @@ def _render_recommendations(recs: dict[str, Any]) -> None:
         for item in train:
             cand = item.get("candidate") or {}
             n = len(item.get("tasks") or [])
-            st.markdown(
-                f"- **{cand.get('engineer_id', '—')}** ({cand.get('role', '')}) → «{item['role']}»: "
-                f"{cand.get('why', '')}. Сейчас {n} {_tasks_word(n)} только на {item['owner_id']}")
+            detail_grid([("Кандидат", f"{cand.get('engineer_id', '—')} · {cand.get('role', '')}"),
+                         ("Новая роль", item["role"]), ("Почему подходит", cand.get("why", "")),
+                         ("Текущий риск", f"{n} {_tasks_word(n)} только на {item['owner_id']}")])
         if not train:
             st.caption("Ролей с единственным носителем нет.")
 
@@ -278,7 +278,7 @@ def _render_recommendations(recs: dict[str, Any]) -> None:
                              "Команда": ", ".join(cand.get("teams") or [])})
     if rows:
         with st.expander(f"Все варианты переобучения по смежным специальностям · {len(rows)}"):
-            st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+            styled_table(pd.DataFrame(rows))
             st.caption("Кандидат подходит, если у него смежная роль (например, «Аналитик» → "
                        "«Аналитик 1С»), уже есть ключевой стек роли или общие навыки с "
                        "единственным носителем. Первым в каждой роли идёт лучший вариант.")
@@ -308,6 +308,6 @@ def _render_team_bus_factor(teams: dict[str, Any]) -> None:
         "Часов в плане": round(r.get("hours") or 0),
         "Задач": len(r.get("tasks") or []),
     } for r in rows])
-    st.dataframe(table, hide_index=True, width="stretch")
+    styled_table(table)
     st.caption("Роль — строка без скобок; технология роли — в скобках. «Зависим от других "
                "команд» — в команде носителей нет, планировщик привлекает людей извне.")

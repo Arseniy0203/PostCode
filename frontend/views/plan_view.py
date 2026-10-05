@@ -7,6 +7,7 @@ from typing import Any
 import streamlit as st
 
 from backend.export.report import excel_bytes, pdf_bytes
+from .components import detail_grid
 from .labels import DECISION_LABELS, STATUS_LABELS, decision_label
 from .task_card import render_task_card
 
@@ -126,16 +127,13 @@ def render_plan_view(plan: dict[str, Any], view_mode_label: str,
     postponed = [t for t in open_tasks if t.get("decision") == "postponed"]
     cancelled = [t for t in open_tasks if t.get("decision") == "cancelled"]
     done = [t for t in included if t.get("status") == "Done"]
-    summary = (f"В квартале **{len(included)}** из {len(open_tasks)} задач"
-               + (f" (выполнено {len(done)})" if done else "")
-               + (f", из них с частичной целью — {len(partial)}" if partial else "")
-               + f". Перенесено: **{len(postponed)}**"
-               + (f", отменено: **{len(cancelled)}**" if cancelled else "") + ".")
-    st.markdown(summary)
+    detail_grid([("В квартале", f"{len(included)} из {len(open_tasks)} задач"),
+                 ("Выполнено", len(done)), ("Частичная цель", len(partial)),
+                 ("Перенесено / отменено", f"{len(postponed)} / {len(cancelled)}")], compact=True)
     if partial:
-        st.caption("Частичная цель — для части ролей (руководитель проекта, поддержка, 1С) нет "
-                   "людей в компании: остальная работа идёт, цель понижена по справочнику "
-                   "«Варианты выбора цели». Подробности — в карточке задачи.")
+        with st.expander("Почему у части задач понижена цель"):
+            detail_grid([("Причина", "Для части ролей нет специалистов в компании."),
+                         ("Решение", "Работа доступных специалистов идёт по плану. Подробности и рекомендации есть в карточке задачи.")])
 
     # --- Блок фильтров ---
     st.markdown("### Фильтры")

@@ -11,7 +11,6 @@ import os
 import re
 import sys
 import copy
-from io import BytesIO
 from typing import Any
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -30,8 +29,10 @@ from backend.recalculation.pipeline import (
     week0_from_excel,
 )
 
-from frontend.theme import (PAGES, PAGE_LABELS, icon, inject_custom_css, metric_card,
-                   render_brand, render_header, render_welcome, render_footer)
+from frontend.theme import (PAGES, PAGE_LABELS, inject_custom_css, metric_card,
+                   render_brand, render_header, render_welcome, render_footer, render_title, navigate)
+from frontend.demo import DEMO_SCENARIOS, demo_snapshots
+from views.kpi_view import render_kpi_view
 from views.dashboard_view import render_dashboard_view
 from views.plan_view import render_plan_view
 from views.risk_view import render_risk_view
@@ -92,6 +93,7 @@ def init_session_state() -> None:
     if "calculated_plans" not in st.session_state:
         st.session_state.calculated_plans = {}  # Ключи: "baseline", 1, 2, ..., 6
         st.session_state.master_dataset = None  # Сырые данные Недели 0
+    st.session_state.setdefault("demo_mode", False)
     st.session_state.setdefault("fact_files", {})     # спринт → (имя файла, байты)
     st.session_state.setdefault("uploader_nonce", 0)  # новый ключ = пустой загрузчик
 
@@ -161,6 +163,7 @@ def _accept_fact(sprint: int, uploaded: Any, master: dict[str, Any], confirmed: 
                               "пересчитаны заново по уже загруженным файлам.")
     else:
         message = ("success", f"Факт спринта {sprint} учтён, план пересчитан.")
+    st.session_state["snapshot"] = last if last > 0 else "baseline"
     st.session_state.fact_message = message
     st.session_state.pop(f"replace_{sprint}", None)
     _reset_uploaders()
@@ -252,124 +255,133 @@ def render_kpi_widgets(baseline_tasks: list[dict[str, Any]], current_tasks: list
     done = sum(t.get("status") == "Done" for t in included)
     cols = st.columns(4)
     with cols[0]:
-        metric_card("Задачи в квартале", str(len(included)), f"{done} выполнено из {len(included)}", "plan")
+        metric_card("Задачи в квартале", str(len(included)), f"{done} выполнено из {len(included)}", "plan", page="План (PI-цикл)")
     with cols[1]:
         metric_card("PI Predictability" + ("" if quarter_over else " · прогноз"),
                     "—" if pi.get("status") == "no_data" else f"{pi_value:.1f}%",
                     f"Норма {pi_norm[0]:g}–{pi_norm[1]:g}%", "chart",
-                    "success" if pi_norm[0] <= pi_value <= pi_norm[1] else "warning")
+                    "success" if pi_norm[0] <= pi_value <= pi_norm[1] else "warning",
+                    page="Показатели", section="PI Predictability")
     with cols[2]:
         has_fact = latest is not None and latest.get("status") not in ("future", "no_data")
         metric_card("Say/Do Ratio", f"{latest['value']:.1f}%" if has_fact else "—",
                     f"Спринт {current_sprint} · норма 90–105%" if has_fact else "Ожидаем факт спринта", "check",
-                    ("success" if latest["status"] == "ok" else "warning") if has_fact else "muted")
+                    ("success" if latest["status"] == "ok" else "warning") if has_fact else "muted",
+                    page="Показатели", section="Say/Do")
     with cols[3]:
-        metric_card("Команды в плане", str(len(teams)), f"Учтено {current_sprint} из 6 спринтов", "people")
+        metric_card("Команды в плане", str(len(teams)), f"Учтено {current_sprint} из 6 спринтов", "people", page="Всё сразу или по плану")
+
+
+def reset_workspace() -> None:
+    """Drop session-only data and widget choices before rendering a fresh title page."""
+    for key in list(st.session_state):
+        del st.session_state[key]
+    init_session_state()
+    st.session_state["next_page"] = "Титульная"
+
+
+def start_demo(scenario: str = "on_track") -> None:
+    master, snapshots = demo_snapshots(scenario)
+    st.session_state.update(master_dataset=master, calculated_plans=snapshots,
+                            demo_mode=True, demo_loaded_scenario=scenario, fact_files={},
+                            master_name="Демонстрационный датасет", snapshot="baseline",
+                            next_page="Обзор")
 
 
 def main() -> None:
-    """Инициализирует Streamlit-страницу, State Machine и сайдбар-навигацию."""
+    """Shared navigation for title, demo and uploaded datasets."""
     st.set_page_config(page_title=APP_TITLE, page_icon="◈", layout="wide")
     inject_custom_css()
     init_session_state()
+    ready = "baseline" in st.session_state.calculated_plans
+    if "next_page" in st.session_state:
+        st.session_state["navigation"] = st.session_state.pop("next_page")
+    if not ready:
+        st.session_state["navigation"] = "Титульная"
 
     with st.sidebar:
         render_brand()
         section_label("Рабочее пространство")
         with st.container(key="sidebar-nav"):
             page = st.radio("Раздел", options=PAGES, format_func=PAGE_LABELS.get,
-                            key="navigation", label_visibility="collapsed")
+                            key="navigation", label_visibility="collapsed", disabled=not ready,
+                            width="stretch")
+        if not ready:
+            st.caption("Разделы откроются после загрузки датасета или запуска демо.")
 
-    # СОСТОЯНИЕ 0: Мастер-датасет не загружен
-    if "baseline" not in st.session_state.calculated_plans:
-        render_header(page, "Начало работы · Неделя 0")
+    if not ready:
+        render_header("Титульная", "Начало работы")
         uploaded_file = render_welcome()
-        demo_path = os.path.join(project_root, "data", "raw", "Хакатон_датасетс_правками_по_списку_вопросов_1.xlsx")
-        demo_requested = False
-        if os.path.exists(demo_path):
-            demo_requested = st.button("Открыть пример на демо-данных", key="load_demo")
-        if demo_requested:
-            with open(demo_path, "rb") as demo_file:
-                uploaded_file = BytesIO(demo_file.read())
-                uploaded_file.name = os.path.basename(demo_path)
-        with st.sidebar:
-            st.html(f'<div class="soft-sidebar-note">{icon("file")}<strong>Начните с данных</strong>'
-                    '<p>Загрузите мастер-датасет, чтобы открыть план, риски и карту компетенций.</p></div>')
-
+        if st.button("Открыть пример на демо-данных", key="load_demo", type="primary"):
+            try:
+                start_demo()
+                st.rerun()
+            except Exception as exc:
+                st.error(f"Не удалось подготовить демо: {exc}")
         if uploaded_file:
             try:
                 base_state = process_baseline(uploaded_file.getvalue())
-                st.session_state.master_dataset = base_state
-                st.session_state.master_name = uploaded_file.name
-                st.session_state.fact_files = {}
-                st.session_state.calculated_plans["baseline"] = {
-                    "plan": base_state["plan"],
-                    "alerts": base_state["alerts"],
-                    "starmap": base_state["starmap"]
-                }
+                st.session_state.update(
+                    master_dataset=base_state, master_name=uploaded_file.name,
+                    fact_files={}, demo_mode=False, snapshot="baseline", next_page="Обзор",
+                    calculated_plans={"baseline": {key: base_state[key] for key in ("plan", "alerts", "starmap")}},
+                )
                 st.rerun()
-            except Exception as e:
-                # ValueError парсера — понятная причина по-русски; прочее — общий текст
-                reason = str(e) if isinstance(e, ValueError) and str(e) else                     "файл не похож на датасет в формате организаторов."
+            except Exception as exc:
+                reason = str(exc) if isinstance(exc, ValueError) and str(exc) else "файл не похож на датасет в формате организаторов."
                 st.error(f"Не удалось прочитать мастер-датасет: {reason}")
                 with st.expander("Технические детали"):
-                    st.code(f"{type(e).__name__}: {e}")
+                    st.code(f"{type(exc).__name__}: {exc}")
         render_footer()
-        return  # Полная блокировка остального UI до загрузки Мастера
+        return
 
-    # СОСТОЯНИЕ 1-6: Пайплайн загрузки спринтов в Сайдбаре
+    demo = st.session_state.demo_mode
     with st.sidebar:
-        section_label("Данные квартала")
+        section_label("Демо-режим" if demo else "Данные квартала")
+    if demo:
+        scenario = st.sidebar.selectbox("Демо-сценарий", list(DEMO_SCENARIOS),
+                                        format_func=DEMO_SCENARIOS.get, key="demo_scenario")
+        if scenario != st.session_state.demo_loaded_scenario:
+            try:
+                master, snapshots = demo_snapshots(scenario)
+                st.session_state.update(master_dataset=master, calculated_plans=snapshots,
+                                        demo_loaded_scenario=scenario)
+            except Exception as exc:
+                st.error(f"Не удалось загрузить сценарий: {exc}")
+                return
+        st.sidebar.caption("Неделя 0 и все 6 спринтов готовы. Выберите срез ниже. Данные демонстрационные.")
+        st.sidebar.button("Выйти из демо", key="exit_demo", on_click=reset_workspace, width="stretch")
+    else:
+        with st.sidebar.expander("Мастер-датасет · Неделя 0", expanded=False):
+            st.caption(st.session_state.get("master_name") or "Датасет загружен.")
+            st.button("Сбросить весь план и начать заново", key="reset_plan",
+                      on_click=reset_workspace, width="stretch")
+        render_fact_uploads(st.session_state.master_dataset)
 
-    with st.sidebar.expander("Мастер-датасет · Неделя 0", expanded=False):
-        st.caption(st.session_state.get("master_name") or "Датасет загружен.")
-        if st.button("Сбросить весь план и начать заново", width="stretch"):
-            st.session_state.calculated_plans = {}
-            st.session_state.master_dataset = None
-            st.session_state.fact_files = {}
-            _reset_uploaders()
-            st.rerun()
-
-    render_fact_uploads(st.session_state.master_dataset)
-
-    st.sidebar.markdown("---")
-
-    # НАВИГАЦИЯ (Выбор текущего хронологического среза)
     with st.sidebar:
-        section_label("Режим просмотра")
-
+        section_label("Срез данных")
     options = {"baseline": "Снимок (Baseline Неделя 0)"}
-    for i in range(1, 7):
-        if i in st.session_state.calculated_plans:
-            options[i] = f"После Спринта {i}"
-
-    selected_mode_label = st.sidebar.radio(
-        "Текущий срез данных",
-        options=list(options.values()),
-        index=len(options) - 1  # По умолчанию выбираем самый свежий загруженный срез
-    )
-
-    selected_key = "baseline"
-    for k, v in options.items():
-        if v == selected_mode_label:
-            selected_key = k
-            break
-
-    with st.sidebar:
-        st.html(f'<div class="soft-sidebar-note">{icon("plan")}<strong>Каждый спринт — шаг к цели</strong>'
-                '<p>Загружайте факт каждые две недели. План и риски пересчитаются автоматически.</p></div>')
-
-    # РЕНДЕР ИНТЕРФЕЙСА
+    options.update({i: f"После Спринта {i}" for i in range(1, 7) if i in st.session_state.calculated_plans})
+    if st.session_state.get("snapshot") not in options:
+        st.session_state["snapshot"] = list(options)[-1]
+    selected_key = st.sidebar.radio("Текущий срез данных", list(options),
+                                    format_func=options.get, key="snapshot")
+    selected_mode_label = options[selected_key]
     active_state = st.session_state.calculated_plans[selected_key]
-    plan_dict = active_state["plan"]
-    alerts = active_state["alerts"]
-    starmap = active_state["starmap"]
-
-    render_header(page, selected_mode_label)
+    plan_dict, alerts, starmap = (active_state[k] for k in ("plan", "alerts", "starmap"))
+    render_header(page, ("Демо · " if demo else "") + selected_mode_label)
+    if page == "Титульная":
+        render_title(ready=True, demo=demo)
+        render_footer()
+        return
+    if page != "Обзор":
+        st.button("← Вернуться к обзору", key="back_to_overview", on_click=navigate, args=("Обзор",))
     render_kpi_widgets(plan_dict.get("baseline", []), plan_dict.get("current", []),
                        plan_dict.get("current_sprint", 0))
     if page == "Обзор":
         render_dashboard_view(plan_dict, alerts, starmap)
+    elif page == "Показатели":
+        render_kpi_view(plan_dict)
     elif page == "План (PI-цикл)":
         render_plan_view(plan_dict, selected_mode_label, alerts, starmap)
     elif page == "Всё сразу или по плану":

@@ -74,7 +74,7 @@ def test_upload_replace_delete_and_all_pages() -> None:
     assert _sprints(at) == [1]
     assert any("Спринта 2" in u.label for u in at.file_uploader)
 
-    for page in ("Обзор", "План (PI-цикл)", "Всё сразу или по плану", "Риски и Алерты", "Звёздная карта"):
+    for page in ("Титульная", "Обзор", "Показатели", "План (PI-цикл)", "Всё сразу или по плану", "Риски и Алерты", "Звёздная карта"):
         at.sidebar.radio(key="navigation").set_value(page)
         at.run()
         assert not at.exception, (page, [e.value for e in at.exception])
@@ -88,3 +88,57 @@ def test_upload_replace_delete_and_all_pages() -> None:
         assert any(label.startswith(task_id) for label in labels), (task_id, labels[:5])
     text = " ".join(str(m.value) for m in at.markdown)
     assert "POSTPONED" not in text and "INCLUDED" not in text
+
+
+def test_demo_snapshots_navigation_and_return_paths():
+    at = AppTest.from_file(str(ROOT / "frontend" / "app.py"), default_timeout=300).run()
+    assert at.sidebar.radio(key="navigation").disabled
+    assert at.sidebar.radio(key="navigation").value == "Титульная"
+    _click(at, "load_demo")
+    assert at.session_state["demo_mode"]
+    assert _sprints(at) == list(range(1, 7))
+    assert not at.file_uploader
+    assert not at.sidebar.radio(key="navigation").disabled
+    snapshots = at.session_state["calculated_plans"]
+    assert snapshots["baseline"]["plan"]["current_sprint"] == 0
+    assert all(snapshots[i]["plan"]["current_sprint"] == i for i in range(1, 7))
+    assert snapshots["baseline"]["plan"]["baseline"] == snapshots[6]["plan"]["baseline"]
+    assert snapshots[1]["plan"]["current"] != snapshots[6]["plan"]["current"]
+
+    at.sidebar.radio(key="snapshot").set_value(3).run()
+    for key, page in [("kpi-plan", "План (PI-цикл)"), ("kpi-chart", "Показатели"),
+                      ("kpi-check", "Показатели"), ("kpi-people", "Всё сразу или по плану")]:
+        _click(at, key)
+        assert at.sidebar.radio(key="navigation").value == page
+        assert at.sidebar.radio(key="snapshot").value == 3
+        if key == "kpi-check":
+            assert at.radio(key="kpi_section").value == "Say/Do"
+        _click(at, "back_to_overview")
+        assert at.sidebar.radio(key="navigation").value == "Обзор"
+
+    # Explicit chart/table switch is always reachable and can be used repeatedly.
+    _click(at, "kpi-people")
+    for key in ("team-load", "role-load", "sprint-load"):
+        at.radio(key=f"chart-mode-{key}").set_value("Таблица").run()
+        assert not at.exception
+        assert len(at.dataframe) == 1
+        assert not at.dataframe[0].value.empty
+        at.radio(key=f"chart-mode-{key}").set_value("График").run()
+        assert not at.exception
+        assert not at.dataframe
+
+    at.sidebar.radio(key="navigation").set_value("Титульная").run()
+    assert not at.file_uploader
+    _click(at, "title_overview")
+    assert at.sidebar.radio(key="snapshot").value == 3
+    for scenario in ("key_task_delay", "engineer_leave"):
+        at.sidebar.selectbox(key="demo_scenario").set_value(scenario).run()
+        assert not at.exception
+        assert _sprints(at) == list(range(1, 7))
+        assert not at.file_uploader
+        assert at.sidebar.radio(key="snapshot").value == 3
+    _click(at, "exit_demo")
+    assert not at.session_state["calculated_plans"]
+    assert not at.session_state["demo_mode"]
+    assert at.sidebar.radio(key="navigation").disabled
+    assert any("Master" in u.label for u in at.file_uploader)

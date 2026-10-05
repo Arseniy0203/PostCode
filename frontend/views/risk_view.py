@@ -7,6 +7,7 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
+from .components import detail_grid, styled_table
 from .labels import sprint_moment
 
 # Подтипы алертов — заголовки групп на вкладке «Наблюдения» и подписи карточек
@@ -56,13 +57,12 @@ def _render_alert_card(alert: dict[str, Any], index: int) -> None:
     since = alert.get("since_sprint")
     if alert.get("status") == "ongoing" and since is not None:
         moment = "держится с Недели 0" if not since else f"держится со спринта {since}"
-    text = f"{_title(alert)}\n\n{alert.get('description', '')}"
-    if alert.get("recommendation"):
-        text += f"\n\n**Что сделать:** {alert['recommendation']}"
-    text += f"\n\n:gray[{moment}]"
     alert_type = alert.get("type") if alert.get("type") in TYPE_COLORS else "info"
     with st.container(key=f"alert-{alert_type}-{alert.get('category')}-{index}"):
-        st.markdown(text)
+        st.markdown(_title(alert))
+        detail_grid([("Что происходит", alert.get("description", "")),
+                     ("Что сделать", alert.get("recommendation")), ("Период", moment)],
+                    tone="danger" if alert_type == "red" else "warning" if alert_type in ("yellow", "orange") else "neutral")
 
 
 def _render_list(alerts: list[dict[str, Any]], empty: str) -> None:
@@ -92,11 +92,8 @@ def _render_grouped(alerts: list[dict[str, Any]], empty: str) -> None:
     for label, items in sorted(groups.items(), key=lambda kv: (weight[kv[0]], -len(kv[1]))):
         with st.expander(f"{label} · {len(items)}"):
             for alert in items:
-                text = alert.get("description", "")
-                if alert.get("recommendation"):
-                    text += f"\n\n**Что сделать:** {alert['recommendation']}"
-                st.markdown(text)
-                st.markdown("---")
+                detail_grid([("Наблюдение", alert.get("description", "")),
+                             ("Что сделать", alert.get("recommendation"))])
 
 
 def _render_data_quality(items: list[dict[str, Any]]) -> None:
@@ -109,7 +106,7 @@ def _render_data_quality(items: list[dict[str, Any]]) -> None:
         "Что не так": item.get("description", ""),
         "Что сделать": item.get("recommendation", ""),
     } for item in items])
-    st.dataframe(table, hide_index=True, width="stretch")
+    styled_table(table)
     st.caption(f"Записей: {len(items)}. Планировщик берёт за истину калькулятор сметы по ролям, "
                "а расхождение показывает здесь.")
 
@@ -202,5 +199,5 @@ def render_risk_view(alerts: list[Any], resolved: list[Any] | None = None,
     if resolved:
         with st.expander(f"Решено с прошлого пересчёта · {len(resolved)}"):
             for alert in resolved:
-                st.markdown(f"{_title(alert)}\n\n{alert.get('description', '')}")
-                st.markdown("---")
+                st.markdown(_title(alert))
+                detail_grid([("Решено", alert.get("description", ""))], tone="success")
