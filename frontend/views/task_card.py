@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
+import pandas as pd
 import streamlit as st
 
 from .labels import decision_label, hours, sprint_range
+from .text import collapse_task_lists
 
 # Числа решения (reason_facts) человеческими словами; прочие ключи служебные.
 FACT_LABELS = {
@@ -68,7 +70,8 @@ def _render_risks(risks: list[dict[str, Any]]) -> None:
     st.markdown("**Риски по задаче**")
     for risk in risks:
         title = RISK_TITLES.get(risk.get("type"), "Риск")
-        st.markdown(f"- **{title}.** {risk.get('description', '')}")
+        description, _ = collapse_task_lists(risk.get("description", ""))
+        st.markdown(f"- **{title}.** {description}")
 
 
 def render_task_card(task: dict[str, Any], risks: list[dict[str, Any]] | None = None) -> None:
@@ -138,12 +141,18 @@ def render_task_card(task: dict[str, Any], risks: list[dict[str, Any]] | None = 
             allocation = task.get("allocation")
             if allocation and isinstance(allocation, dict):
                 with st.expander("Кто и когда работает"):
-                    for s, engs in allocation.items():
-                        if isinstance(engs, dict):
-                            eng_str = ", ".join(f"{e} ({hours(h)} ч)" for e, h in engs.items())
-                            st.caption(f"Спринт {s}: {eng_str}")
+                    # Таблица вместо серых подписей: читается на экране и на проекторе
+                    rows = []
+                    for sprint, engineers in allocation.items():
+                        if isinstance(engineers, dict):
+                            people = ", ".join(f"{eng} — {hours(value)} ч"
+                                               for eng, value in engineers.items())
+                            total = sum(float(v or 0) for v in engineers.values())
                         else:
-                            st.caption(f"Спринт {s}: {engs}")
+                            people, total = str(engineers), 0.0
+                        rows.append({"Спринт": sprint, "Кто работает": people,
+                                     "Часов": hours(total)})
+                    st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
 
         with col_deps:
             st.markdown("**Зависимости**")

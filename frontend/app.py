@@ -42,6 +42,14 @@ from views.overload_view import render_overload_view
 
 APP_TITLE = os.getenv("APP_TITLE", "ПочтаТех: PI-Планирование")
 LOGO_PATH = os.getenv("LOGO_PATH", os.path.join("frontend", "assets", "logo_pochtatex.png"))
+TEMPLATE_PATH = os.getenv("TEMPLATE_PATH", os.path.join("data", "template",
+                                                        "Шаблон_датасета.xlsx"))
+XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def _looks_like_fact(name: str) -> bool:
+    """Имя вида Sprint_2_Fact.xlsx: файл факта спринта, а не мастер-датасет."""
+    return bool(re.search(r"(?:sprint|спринт)[ _-]*\d", name or "", flags=re.IGNORECASE))
 
 
 def inject_custom_css() -> None:
@@ -214,7 +222,21 @@ def inject_custom_css() -> None:
             box-shadow: none !important;
         }
         [data-testid="stFileUploader"] > section:hover {border-color: var(--brand) !important;}
-        [data-testid="stFileUploaderDropzoneInstructions"] span,
+        /* Подписи загрузчика у Streamlit английские и не переводятся настройкой:
+           прячем размером шрифта и подставляем свои. */
+        [data-testid="stFileUploaderDropzoneInstructions"] span {font-size: 0 !important;}
+        [data-testid="stFileUploaderDropzoneInstructions"] span::after {
+            content: "Перетащите файл .xlsx или выберите на диске — до 200 МБ";
+            font-size: 0.8rem;
+            color: var(--ink-muted);
+        }
+        [data-testid="stFileUploader"] button [data-testid="stMarkdownContainer"] p {
+            font-size: 0 !important;
+        }
+        [data-testid="stFileUploader"] button [data-testid="stMarkdownContainer"] p::after {
+            content: "Выбрать файл";
+            font-size: 0.85rem;
+        }
         [data-testid="stFileUploaderDropzoneInstructions"] small,
         [data-testid="stFileInfo"] p, [data-testid="stFileInfo"] small,
         [data-testid="stFileInfo"] span {color: var(--ink-muted) !important;}
@@ -368,13 +390,30 @@ def _file_sprint_mismatch(name: str, sprint: int) -> str | None:
     return None
 
 
+def _fact_problem(name: str, data: bytes, sprint: int) -> str | None:
+    """Что не так с файлом факта: чужой спринт, мастер-датасет или дубль.
+
+    Все три случая — следствие похожести файлов: факты спринтов сделаны в том же
+    формате, что и мастер-датасет, поэтому перепутать их легко.
+    """
+    if data and data == st.session_state.get("master_bytes"):
+        return ("Это мастер-датасет Недели 0, а не факт спринта: файл совпадает с тем, "
+                "что уже загружен как исходный план.")
+    for loaded_sprint, (loaded_name, loaded_data) in st.session_state.get("fact_files", {}).items():
+        if loaded_sprint != sprint and data and data == loaded_data:
+            return (f"Этот файл уже загружен как факт спринта {loaded_sprint} "
+                    f"(«{loaded_name}»): в нём нет работы за спринт {sprint}.")
+    return _file_sprint_mismatch(name, sprint)
+
+
 def _accept_fact(sprint: int, uploaded: Any, master: dict[str, Any], confirmed: bool = False) -> None:
     """Сохраняет файл спринта и пересчитывает его и все следующие загруженные спринты.
 
-    Файл с другим номером спринта в имени не применяется без подтверждения.
+    Подозрительный файл (чужой спринт, мастер-датасет, дубль) не применяется
+    без подтверждения.
     """
     name, data = (uploaded if isinstance(uploaded, tuple) else (uploaded.name, uploaded.getvalue()))
-    if not confirmed and _file_sprint_mismatch(name, sprint):
+    if not confirmed and _fact_problem(name, data, sprint):
         st.session_state.pending_fact = (sprint, name, data)
         _reset_uploaders()
         st.rerun()
@@ -410,7 +449,7 @@ def render_fact_uploads(master: dict[str, Any]) -> None:
     pending = st.session_state.get("pending_fact")
     if pending:
         sprint, name, data = pending
-        st.sidebar.warning(f"{_file_sprint_mismatch(name, sprint)} Файл «{name}» пока не применён.")
+        st.sidebar.warning(f"{_fact_problem(name, data, sprint)} Файл «{name}» пока не применён.")
         col_yes, col_no = st.sidebar.columns(2)
         if col_yes.button("Всё равно загрузить", key="pending_yes", width="stretch"):
             _accept_fact(sprint, (name, data), master, confirmed=True)
@@ -535,17 +574,41 @@ def main() -> None:
         st.title("Инициализация квартала")
         st.caption("Загрузите мастер-датасет, чтобы построить план квартала, риски и звёздную карту.")
 
+        st.markdown(
+            "**Что нужно в файле:** задачи бэклога со статусами, оценка в Story Points, "
+            "калькулятор сметы по ролям, зависимости, профили инженеров и история velocity "
+            "команд. Таблицы ищутся по заголовкам, порядок на листе не важен."
+        )
+        if os.path.exists(TEMPLATE_PATH):
+            with open(TEMPLATE_PATH, "rb") as template:
+                st.download_button("Скачать шаблон датасета", data=template.read(),
+                                   file_name=os.path.basename(TEMPLATE_PATH),
+                                   mime=XLSX_MIME,
+                                   help="Пустой файл с нужными таблицами и колонками: "
+                                        "заполните своими данными и загрузите обратно.")
+
         uploaded_file = st.file_uploader(
-            "Загрузите Master-датасет (.xlsx)",
+            "Мастер-датасет Недели 0 (.xlsx)",
             type=["xlsx"],
             help="Файл инициализации плана. Служит основой для расчета Baseline и KPI."
         )
 
+        if uploaded_file and _looks_like_fact(uploaded_file.name) and not st.session_state.get(
+                "master_confirmed"):
+            st.warning(f"Файл «{uploaded_file.name}» похож на факт спринта, а не на мастер-датасет "
+                       "Недели 0. С него план квартала начнётся так, будто работа уже выполнена.")
+            if st.button("Всё равно загрузить как мастер-датасет"):
+                st.session_state.master_confirmed = True
+                st.rerun()
+            return
+
         if uploaded_file:
+            st.session_state.pop("master_confirmed", None)
             try:
                 base_state = process_baseline(uploaded_file.getvalue())
                 st.session_state.master_dataset = base_state
                 st.session_state.master_name = uploaded_file.name
+                st.session_state.master_bytes = uploaded_file.getvalue()
                 st.session_state.fact_files = {}
                 st.session_state.calculated_plans["baseline"] = {
                     "plan": base_state["plan"],

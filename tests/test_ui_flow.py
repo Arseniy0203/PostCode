@@ -42,7 +42,7 @@ def _click(at: AppTest, key: str) -> None:
 def test_upload_replace_delete_and_all_pages() -> None:
     at = AppTest.from_file(str(ROOT / "frontend" / "app.py"), default_timeout=300)
     at.run()
-    _upload(at, "Master", MASTER)
+    _upload(at, "Мастер-датасет", MASTER)
 
     for sprint in (1, 2):
         _upload(at, f"Спринта {sprint}", SCENARIO / f"Sprint_{sprint}_Fact.xlsx")
