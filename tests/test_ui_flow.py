@@ -43,6 +43,13 @@ def test_upload_replace_delete_and_all_pages() -> None:
     at = AppTest.from_file(str(ROOT / "frontend" / "app.py"), default_timeout=300)
     at.run()
     _upload(at, "Master", MASTER)
+    # Overview actions switch the same navigation state as the sidebar.
+    _click(at, "overview_plan")
+    assert at.sidebar.radio(key="navigation").value == "План (PI-цикл)"
+    at.sidebar.radio(key="navigation").set_value("Обзор")
+    at.run()
+    _click(at, "overview_risks")
+    assert at.sidebar.radio(key="navigation").value == "Риски и Алерты"
 
     for sprint in (1, 2):
         _upload(at, f"Спринта {sprint}", SCENARIO / f"Sprint_{sprint}_Fact.xlsx")
@@ -67,12 +74,12 @@ def test_upload_replace_delete_and_all_pages() -> None:
     assert _sprints(at) == [1]
     assert any("Спринта 2" in u.label for u in at.file_uploader)
 
-    for page in ("План (PI-цикл)", "Всё сразу или по плану", "Риски и Алерты", "Звёздная карта"):
-        at.sidebar.selectbox[0].set_value(page)
+    for page in ("Обзор", "План (PI-цикл)", "Всё сразу или по плану", "Риски и Алерты", "Звёздная карта"):
+        at.sidebar.radio(key="navigation").set_value(page)
         at.run()
         assert not at.exception, (page, [e.value for e in at.exception])
 
-    at.sidebar.selectbox[0].set_value("План (PI-цикл)")
+    at.sidebar.radio(key="navigation").set_value("План (PI-цикл)")
     at.run()
     # Карточка раскрывается прямо в сетке спринтов: у каждой задачи свой блок,
     # искать её в отдельном списке не нужно.
