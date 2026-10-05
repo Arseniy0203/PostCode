@@ -67,7 +67,7 @@ def test_fact_template_round_trip(state):
     plan = copy.deepcopy(state["plan"])
     engineers = state["parsed"]["engineers_profiles"]
     rows = fact_template_rows(plan, engineers, 1)
-    assert rows and all(r["task_id"] and r["status"] for r in rows)
+    assert rows and all(r["task_id"] and r["статус"] for r in rows)
 
     data = fact_template_bytes(plan, engineers, 1)
     fact = fact_from_any_excel(data, plan)
