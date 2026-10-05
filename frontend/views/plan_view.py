@@ -98,7 +98,8 @@ def get_status_color(status: str, decision: str) -> str:
 
 def render_plan_view(plan: dict[str, Any], view_mode_label: str,
                      alerts: list[dict[str, Any]] | None = None,
-                     starmap: dict[str, Any] | None = None) -> None:
+                     starmap: dict[str, Any] | None = None,
+                     on_manual_change: Any = None) -> None:
     """
     Отрисовывает план по спринтам в виде канбан-сетки.
 
@@ -109,6 +110,7 @@ def render_plan_view(plan: dict[str, Any], view_mode_label: str,
         view_mode_label: Строка с названием текущего хронологического среза.
         alerts: алерты текущего среза — попадают в выгрузку отдельным листом.
         starmap: звёздная карта — из неё берётся план найма для выгрузки.
+        on_manual_change: обработчик ручного решения по задаче (снять / вернуть).
     """
     st.title(f"Квартальный план · {view_mode_label}")
 
@@ -136,6 +138,15 @@ def render_plan_view(plan: dict[str, Any], view_mode_label: str,
         st.caption("Частичная цель — для части ролей (руководитель проекта, поддержка, 1С) нет "
                    "людей в компании: остальная работа идёт, цель понижена по справочнику "
                    "«Варианты выбора цели». Подробности — в карточке задачи.")
+
+    manual = st.session_state.get("manual_defer", {})
+    if manual:
+        st.info("Снято с квартала вручную: "
+                + ", ".join(f"**{tid}** — {note}" for tid, note in sorted(manual.items()))
+                + ". Эти задачи не планируются, их ёмкость досталась остальным.")
+        if on_manual_change and st.button("Вернуть все в планирование", key="manual_return_all"):
+            manual.clear()
+            on_manual_change()
 
     # --- Блок фильтров ---
     st.markdown("### Фильтры")
@@ -187,7 +198,8 @@ def render_plan_view(plan: dict[str, Any], view_mode_label: str,
     )
     if picked != NOT_SELECTED:
         chosen = task_mapping[picked]
-        render_task_card(chosen, task_risks(alerts).get(chosen.get("task_id")) or [])
+        render_task_card(chosen, task_risks(alerts).get(chosen.get("task_id")) or [],
+                         on_manual_change)
 
     st.markdown("---")
 
@@ -259,4 +271,4 @@ def render_plan_view(plan: dict[str, Any], view_mode_label: str,
                          + (f" · {mark}" if mark else ""))
                 with st.container(key=key):
                     with st.expander(label):
-                        render_task_card(t, risks)
+                        render_task_card(t, risks, on_manual_change)

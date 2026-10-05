@@ -74,7 +74,33 @@ def _render_risks(risks: list[dict[str, Any]]) -> None:
         st.markdown(f"- **{title}.** {description}")
 
 
-def render_task_card(task: dict[str, Any], risks: list[dict[str, Any]] | None = None) -> None:
+def _render_manual_controls(task: dict[str, Any], on_change: Any) -> None:
+    """Ручное решение по задаче: снять с квартала или вернуть.
+
+    Планировщик предлагает, решает человек: PI-планирование — это переговоры.
+    После решения план пересобирается, освободившаяся ёмкость уходит другим.
+    """
+    if on_change is None or task.get("status") == "Done":
+        return
+    tid = task.get("task_id")
+    manual = st.session_state.get("manual_defer", {})
+    if tid in manual:
+        st.caption("Задача снята с квартала вручную.")
+        if st.button("Вернуть в планирование", key=f"manual_return_{tid}", width="stretch"):
+            manual.pop(tid, None)
+            on_change()
+    else:
+        with st.popover("Снять с квартала", width="stretch"):
+            note = st.text_input("Причина (попадёт в план и выгрузку)",
+                                 key=f"manual_note_{tid}",
+                                 placeholder="например: заказчик отложил до следующего квартала")
+            if st.button("Подтвердить", key=f"manual_defer_{tid}", width="stretch"):
+                manual[tid] = note.strip() or "решение руководителя"
+                on_change()
+
+
+def render_task_card(task: dict[str, Any], risks: list[dict[str, Any]] | None = None,
+                     on_manual_change: Any = None) -> None:
     """
     Отрисовывает детальную карточку задачи.
 
@@ -84,6 +110,8 @@ def render_task_card(task: dict[str, Any], risks: list[dict[str, Any]] | None = 
     Args:
         task: Словарь с данными задачи (схема PlannedTask).
         risks: алерты, которые касаются этой задачи (см. plan_view.task_risks).
+        on_manual_change: что вызвать после ручного решения по задаче; None —
+            кнопки не показываются (например, в снимке Недели 0).
     """
     decision = task.get("decision")
 
@@ -115,6 +143,7 @@ def render_task_card(task: dict[str, Any], risks: list[dict[str, Any]] | None = 
 
         _render_facts(task)
         _render_risks(risks or [])
+        _render_manual_controls(task, on_manual_change)
 
         # 3. Трудозатраты и зависимости
         col_labor, col_deps = st.columns(2)

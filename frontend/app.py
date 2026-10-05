@@ -56,13 +56,15 @@ def section_label(text: str) -> None:
 
 
 @st.cache_data(show_spinner="Сборка Baseline и проверка рисков...")
-def process_baseline(file_bytes: bytes) -> dict[str, Any]:
+def process_baseline(file_bytes: bytes,
+                     defer: tuple[tuple[str, str], ...] = ()) -> dict[str, Any]:
     """Парсит исходный датасет и строит Baseline тем же конвейером, что и пересчёт.
 
     Задачи в работе планируются на остаток (смета − Spent_time_roles), ёмкость
     команды — средний velocity × 0.8 (backend.recalculation.pipeline.week0_from_excel).
+    defer — снятые вручную задачи (кортеж пар, чтобы работал кэш).
     """
-    state = week0_from_excel(file_bytes)
+    state = week0_from_excel(file_bytes, defer=dict(defer) or None)
     result = {key: state[key] for key in ("parsed", "clean_deps", "plan", "alerts", "starmap")}
     result["data_quality"] = list((state.get("report") or {}).get("data_quality") or [])
     result["overload"] = state.get("overload")
@@ -145,6 +147,33 @@ def _file_sprint_mismatch(name: str, sprint: int) -> str | None:
         return (f"Похоже, это файл спринта {match.group(1)}, а загружается спринт {sprint}. "
                 "Проверьте файл.")
     return None
+
+
+def manual_defer() -> dict[str, str]:
+    """Задачи, снятые с квартала вручную: {task_id: комментарий}."""
+    return st.session_state.setdefault("manual_defer", {})
+
+
+def _rebuild_with_manual() -> None:
+    """Пересобирает план после ручного решения: Неделя 0 заново, затем факты.
+
+    Снятая задача не планируется вовсе, её ёмкость достаётся остальным, поэтому
+    пересчитывать нужно с Недели 0, а не править готовый план.
+    """
+    master_bytes = st.session_state.get("master_bytes")
+    if not master_bytes:
+        st.session_state.fact_message = ("warning", "Чтобы менять план вручную, загрузите "
+                                                    "мастер-датасет заново.")
+        return
+    defer = tuple(sorted(manual_defer().items()))
+    base_state = process_baseline(master_bytes, defer)
+    st.session_state.master_dataset = base_state
+    st.session_state.calculated_plans["baseline"] = {
+        "plan": base_state["plan"],
+        "alerts": base_state["alerts"],
+        "starmap": base_state["starmap"],
+    }
+    _recalculate_from(1, base_state)
 
 
 def _fact_problem(name: str, data: bytes, sprint: int) -> str | None:
@@ -310,9 +339,21 @@ def main() -> None:
         render_header(page, "Начало работы · Неделя 0")
         uploaded_file = render_welcome()
         demo_path = os.path.join(project_root, "data", "raw", "Хакатон_датасетс_правками_по_списку_вопросов_1.xlsx")
+        # Обе кнопки рядом с загрузчиком: нечего загружать — возьмите шаблон или
+        # посмотрите на демо-данных
+        col_template, col_demo = st.columns(2)
         demo_requested = False
+        if os.path.exists(TEMPLATE_PATH):
+            with open(TEMPLATE_PATH, "rb") as template:
+                col_template.download_button(
+                    "Скачать шаблон датасета", data=template.read(),
+                    file_name=os.path.basename(TEMPLATE_PATH), mime=XLSX_MIME,
+                    help="Пустой файл с нужными таблицами и колонками: заполните своими "
+                         "данными и загрузите обратно.",
+                    width="stretch")
         if os.path.exists(demo_path):
-            demo_requested = st.button("Открыть пример на демо-данных", key="load_demo")
+            demo_requested = col_demo.button("Открыть пример на демо-данных", key="load_demo",
+                                             width="stretch")
         if demo_requested:
             with open(demo_path, "rb") as demo_file:
                 uploaded_file = BytesIO(demo_file.read())
@@ -320,14 +361,6 @@ def main() -> None:
         with st.sidebar:
             st.html(f'<div class="soft-sidebar-note">{icon("file")}<strong>Начните с данных</strong>'
                     '<p>Загрузите мастер-датасет, чтобы открыть план, риски и карту компетенций.</p></div>')
-            if os.path.exists(TEMPLATE_PATH):
-                with open(TEMPLATE_PATH, "rb") as template:
-                    st.download_button(
-                        "Скачать шаблон датасета", data=template.read(),
-                        file_name=os.path.basename(TEMPLATE_PATH), mime=XLSX_MIME,
-                        help="Пустой файл с нужными таблицами и колонками: заполните "
-                             "своими данными и загрузите обратно.",
-                        width="stretch")
 
         if uploaded_file and _looks_like_fact(uploaded_file.name) and not st.session_state.get(
                 "master_confirmed"):
@@ -371,6 +404,7 @@ def main() -> None:
             st.session_state.calculated_plans = {}
             st.session_state.master_dataset = None
             st.session_state.fact_files = {}
+            st.session_state.manual_defer = {}
             _reset_uploaders()
             st.rerun()
 
@@ -415,7 +449,12 @@ def main() -> None:
     if page == "Обзор":
         render_dashboard_view(plan_dict, alerts, starmap)
     elif page == "План (PI-цикл)":
-        render_plan_view(plan_dict, selected_mode_label, alerts, starmap)
+        def on_manual_change() -> None:
+            """Снятие задачи меняет весь план, поэтому пересобираем и перерисовываем."""
+            _rebuild_with_manual()
+            st.rerun()
+
+        render_plan_view(plan_dict, selected_mode_label, alerts, starmap, on_manual_change)
     elif page == "Всё сразу или по плану":
         render_overload_view((st.session_state.master_dataset or {}).get("overload"))
     elif page == "Риски и Алерты":
