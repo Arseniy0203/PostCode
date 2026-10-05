@@ -10,7 +10,7 @@ import pandas as pd
 import streamlit as st
 
 COLOR_OVER = "#B3261E"   # приглушённый красный — как у критических рисков
-COLOR_PLAN = "#f97316"   # синий из логотипа
+COLOR_PLAN = "#294DA6"   # синий из логотипа
 COLOR_RULE = "#71717a"
 
 
@@ -133,14 +133,14 @@ def render_overload_view(overload: dict[str, Any] | None) -> None:
                 y=alt.Y("team_id:N", title=None, axis=alt.Axis(labelLimit=200)),
                 # Длина шкалы по умолчанию (200px) выше самой карты — подпись «0» обрезалась
                 color=alt.Color("pct:Q", title="Загрузка, %",
-                                scale=alt.Scale(domain=[0, 100], range=["#fff7ed", COLOR_PLAN]),
+                                scale=alt.Scale(domain=[0, 100], range=["#EEF2FB", COLOR_PLAN]),
                                 legend=alt.Legend(values=[0, 50, 100], gradientLength=120)),
                 tooltip=[alt.Tooltip("team_id:N", title="Команда"), "Спринт",
                          alt.Tooltip("sp:Q", title="SP"), alt.Tooltip("pct:Q", title="Загрузка, %")],
             )
             text = heat.mark_text(fontSize=11).encode(
                 text=alt.Text("pct:Q", format=".0f"),
-                color=alt.condition(alt.datum.pct > 60, alt.value("#FFFFFF"), alt.value("#27272a")))
+                color=alt.condition(alt.datum.pct > 60, alt.value("#FFFFFF"), alt.value("#1E293B")))
             st.altair_chart((heat + text).properties(height=alt.Step(30)), width="stretch")
             st.caption("Процент ёмкости команды по SP в каждом спринте плана Недели 0.")
             idle = sorted(load.loc[(load["sprint"] == load["sprint"].max()) & (load["pct"] == 0),

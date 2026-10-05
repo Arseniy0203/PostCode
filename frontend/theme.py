@@ -52,8 +52,10 @@ def navigate(page: str) -> None:
 
 
 def render_brand() -> None:
-    st.html(f'<div class="soft-brand"><span class="soft-brand-icon">{icon("dashboard")}</span>'
-            '<div>ПочтаТех<span>PI Planning Dashboard</span></div></div>')
+    logo = b64encode((ASSETS / "logo_pochtatex.png").read_bytes()).decode()
+    st.html('<div class="soft-brand"><div class="soft-brand-logo">'
+            f'<img src="data:image/png;base64,{logo}" alt="ПочтаТех" /></div>'
+            '<span class="soft-brand-caption">Квартальное PI-планирование</span></div>')
 
 
 def render_header(page: str, snapshot: str) -> None:

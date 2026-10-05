@@ -41,7 +41,7 @@ def _completion_chart(plan: dict[str, Any]) -> alt.Chart:
                 y=alt.Y("Задачи:Q", title=None, axis=alt.Axis(tickMinStep=1, gridDash=[3, 3])),
                 color=alt.Color("Срез:N", scale=alt.Scale(
                     domain=["Исходный план", "Текущий прогноз", "Факт"],
-                    range=["#a1a1aa", "#f97316", "#27272a"]),
+                    range=["#9BB4E5", "#294DA6", "#18356F"]),
                     legend=alt.Legend(orient="bottom", title=None)),
                 strokeDash=alt.StrokeDash("Срез:N", scale=alt.Scale(
                     domain=["Исходный план", "Текущий прогноз", "Факт"], range=[[5, 4], [1, 0], [1, 0]]), legend=None),
@@ -58,7 +58,7 @@ def _start_chart(tasks: list[dict[str, Any]]) -> alt.Chart:
             .encode(x=alt.X("Спринт:N", title=None, axis=alt.Axis(labelAngle=0, grid=False)),
                     y=alt.Y("Задачи:Q", title=None, axis=alt.Axis(tickMinStep=1, tickCount=4)),
                     tooltip=["Спринт:N", "Задачи:Q"])
-            .properties(height=170, background="#27272a",
+            .properties(height=170, background="#294DA6",
                         padding={"left": 18, "right": 18, "top": 18, "bottom": 18})
             .configure_view(stroke=None)
             .configure_axis(labelColor="#e3e3e7", domain=False, ticks=False, grid=False, labelPadding=10))
@@ -81,7 +81,7 @@ def render_dashboard_view(plan: dict[str, Any], alerts: list[dict[str, Any]], st
         st.button("Открыть квартальный план →", key="overview_plan", on_click=navigate,
                   args=("План (PI-цикл)",), type="primary")
     with right:
-        st.html(f'<div class="soft-photo" style="background-image: linear-gradient(310deg, #18181be8, #27272a66), url({asset_uri("ivancik.jpg")})">'
+        st.html(f'<div class="soft-photo" style="background-image: linear-gradient(310deg, #18356Fef, #294DA699), url({asset_uri("ivancik.jpg")})">'
                 '<div><h2>Сильные команды.<br>Уверенные решения.</h2>'
                 '<p>Узнайте, на ком держатся ключевые компетенции и какие роли нужны команде для достижения целей.</p></div>'
                 f'<small>{len(starmap.get("engineers", []))} инженеров · карта компетенций и рекомендации</small></div>')

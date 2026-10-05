@@ -90,7 +90,7 @@ def get_status_color(status: str, decision: str) -> str:
 
     status_map = {
         "Done": "#1B6D45",        # Выполнено
-        "InProgress": "#f97316",  # В работе
+        "InProgress": "#294DA6",  # В работе
         "ToDo": "#7A8494"         # В очереди
     }
     return status_map.get(status, "#9AA3B0")
