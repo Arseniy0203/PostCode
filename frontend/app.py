@@ -11,7 +11,7 @@ import os
 import re
 import sys
 import copy
-import tempfile
+from io import BytesIO
 from typing import Any
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -21,19 +21,18 @@ if project_root not in sys.path:
 
 import streamlit as st
 
-from backend.ingestion.parse_dataset import parse_excel, filter_orphan_dependencies
-from backend.planning.scheduler import build_baseline_plan
-from backend.risk.alerts import collect_alerts
 from backend.starmap.bus_factor import starmap_summary
 from backend.recalculation.recalc import apply_sprint_fact
 from backend.kpi.metrics import kpi_breakdown
-from backend.recalculation.baseline import save_baseline
 from backend.recalculation.pipeline import (
     dataset_from_parsed,
     fact_from_dataset_excel,
     week0_from_excel,
 )
 
+from frontend.theme import (PAGES, PAGE_LABELS, icon, inject_custom_css, metric_card,
+                   render_brand, render_header, render_welcome, render_footer)
+from views.dashboard_view import render_dashboard_view
 from views.plan_view import render_plan_view
 from views.risk_view import render_risk_view
 from views.star_map_view import render_star_map_view
@@ -41,234 +40,6 @@ from views.overload_view import render_overload_view
 
 
 APP_TITLE = os.getenv("APP_TITLE", "ПочтаТех: PI-Планирование")
-LOGO_PATH = os.getenv("LOGO_PATH", os.path.join("frontend", "assets", "logo_pochtatex.png"))
-
-
-def inject_custom_css() -> None:
-    """Инжектирует фирменный стиль: светлая корпоративная тема ПочтаТеха.
-
-    Принципы: белый фон, один акцентный цвет из логотипа (#294DA6), тонкие
-    линии вместо теней и градиентов, табличные цифры в метриках и таблицах.
-    """
-    st.markdown(
-        """
-        <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-
-        :root {
-            --brand: #294DA6;          /* синий из логотипа «почтатех» */
-            --brand-dark: #1D3876;
-            --brand-tint: #EEF2FB;
-            --ink: #111827;            /* основной текст */
-            --ink-muted: #5B6472;      /* подписи и пояснения */
-            --line: #E4E7EC;           /* границы и разделители */
-            --surface: #FFFFFF;
-            --surface-alt: #F7F8FA;    /* сайдбар, шапки таблиц */
-            --danger: #B3261E;
-            --warning: #9A6100;
-            --success: #1B6D45;
-        }
-
-        #MainMenu, footer {visibility: hidden;}
-        header {background: transparent !important;}
-
-        html, body, .stApp, [class*="css"] {
-            font-family: 'Inter', -apple-system, 'Segoe UI', sans-serif;
-            font-feature-settings: 'tnum' 1, 'cv05' 1;
-        }
-
-        .stApp {
-            background: var(--surface);
-            color: var(--ink);
-        }
-
-        .block-container {
-            padding-top: 2.75rem;
-            padding-bottom: 4rem;
-            max-width: 1360px;
-        }
-
-        /* --- Типографика: заголовки сдержанные, без «плакатности» --- */
-        h1 {
-            font-size: 1.75rem !important;
-            font-weight: 600 !important;
-            letter-spacing: -0.02em;
-            color: var(--ink) !important;
-            margin-bottom: 0.25rem !important;
-        }
-        h2 {
-            font-size: 1.15rem !important;
-            font-weight: 600 !important;
-            color: var(--ink) !important;
-            letter-spacing: -0.01em;
-        }
-        h3, h4, h5, h6 {
-            font-size: 0.95rem !important;
-            font-weight: 600 !important;
-            color: var(--ink) !important;
-        }
-        .stApp p, .stApp li, .stApp span, .stApp label, .stApp div {
-            color: var(--ink);
-        }
-        .stCaption, [data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] p {
-            color: var(--ink-muted) !important;
-            font-size: 0.8rem !important;
-        }
-
-        /* Надзаголовок раздела: мелкие прописные, как в отчётах */
-        .section-label {
-            font-size: 0.72rem;
-            font-weight: 600;
-            letter-spacing: 0.09em;
-            text-transform: uppercase;
-            color: var(--ink-muted);
-            margin-bottom: 0.6rem;
-        }
-
-        /* --- Метрики: плоские карточки с тонкой рамкой --- */
-        div[data-testid="stMetric"] {
-            background: var(--surface);
-            border: 1px solid var(--line);
-            border-radius: 6px;
-            padding: 1.1rem 1.25rem;
-        }
-        div[data-testid="stMetricLabel"] p {
-            font-size: 0.78rem !important;
-            font-weight: 500 !important;
-            letter-spacing: 0.02em;
-            color: var(--ink-muted) !important;
-        }
-        div[data-testid="stMetricValue"] {
-            font-size: 2rem !important;
-            font-weight: 600 !important;
-            letter-spacing: -0.03em;
-            color: var(--ink) !important;
-        }
-        div[data-testid="stMetricValue"] > div {color: var(--ink) !important;}
-        div[data-testid="stMetricDelta"] {font-size: 0.78rem !important;}
-        div[data-testid="stMetricDelta"] svg {display: none;}
-
-        /* --- Контейнеры и раскрывающиеся блоки --- */
-        div[data-testid="stExpander"],
-        div[data-testid="stVerticalBlockBorderWrapper"] {
-            background: var(--surface);
-            border: 1px solid var(--line) !important;
-            border-radius: 6px !important;
-            box-shadow: none !important;
-        }
-        div[data-testid="stExpander"] summary {
-            font-size: 0.88rem;
-            font-weight: 500;
-        }
-
-        /* --- Сайдбар --- */
-        [data-testid="stSidebar"] {
-            background: var(--surface-alt) !important;
-            border-right: 1px solid var(--line);
-        }
-        [data-testid="stSidebar"] .block-container {padding-top: 1.5rem;}
-        [data-testid="stSidebar"] h1,
-        [data-testid="stSidebar"] h2,
-        [data-testid="stSidebar"] h3 {
-            font-size: 0.72rem !important;
-            font-weight: 600 !important;
-            letter-spacing: 0.09em;
-            text-transform: uppercase;
-            color: var(--ink-muted) !important;
-        }
-        [data-testid="stSidebar"] p,
-        [data-testid="stSidebar"] span,
-        [data-testid="stSidebar"] label {color: var(--ink) !important;}
-
-        /* --- Кнопки: один акцент, без градиентов --- */
-        .stButton > button,
-        [data-testid="stDownloadButton"] button,
-        [data-testid="stFileUploader"] button,
-        [data-testid="stFormSubmitButton"] button {
-            background: var(--brand) !important;
-            color: #FFFFFF !important;
-            border: 1px solid var(--brand) !important;
-            border-radius: 5px !important;
-            font-weight: 500 !important;
-            font-size: 0.85rem !important;
-            box-shadow: none !important;
-            transition: background 0.15s ease;
-        }
-        .stButton > button *,
-        [data-testid="stDownloadButton"] button *,
-        [data-testid="stFileUploader"] button * {color: #FFFFFF !important; fill: #FFFFFF !important;}
-        .stButton > button:hover,
-        [data-testid="stDownloadButton"] button:hover,
-        [data-testid="stFileUploader"] button:hover {
-            background: var(--brand-dark) !important;
-            border-color: var(--brand-dark) !important;
-        }
-        [data-testid="stTooltipIcon"] {background: transparent !important;}
-        [data-testid="stTooltipIcon"] * {fill: var(--ink-muted) !important;}
-
-        /* --- Загрузка файла --- */
-        [data-testid="stFileUploader"] > section {
-            background: var(--surface-alt) !important;
-            border: 1px dashed var(--line) !important;
-            border-radius: 6px !important;
-            box-shadow: none !important;
-        }
-        [data-testid="stFileUploader"] > section:hover {border-color: var(--brand) !important;}
-        [data-testid="stFileUploaderDropzoneInstructions"] span,
-        [data-testid="stFileUploaderDropzoneInstructions"] small,
-        [data-testid="stFileInfo"] p, [data-testid="stFileInfo"] small,
-        [data-testid="stFileInfo"] span {color: var(--ink-muted) !important;}
-
-        /* --- Таблицы: плотные, с тонкой сеткой --- */
-        [data-testid="stDataFrame"] {border: 1px solid var(--line); border-radius: 6px;}
-        [data-testid="stDataFrame"] * {font-size: 0.84rem;}
-
-        /* --- Вкладки --- */
-        button[data-baseweb="tab"] {
-            font-size: 0.86rem !important;
-            font-weight: 500 !important;
-        }
-        button[data-baseweb="tab"] p {color: var(--ink-muted) !important;}
-        button[data-baseweb="tab"][aria-selected="true"] p {color: var(--brand) !important;}
-        div[data-baseweb="tab-highlight"] {background: var(--brand) !important;}
-
-        /* --- Уведомления: сдержанные, но цвет статуса сохраняем (красный,
-               жёлтый, синий): он отличает критический риск от подсказки --- */
-        div[data-testid="stAlert"] {
-            border-radius: 5px;
-            box-shadow: none;
-        }
-        div[data-testid="stAlert"] p {font-size: 0.86rem;}
-
-        /* --- Карточка алерта: цвет полосы = тип риска (см. risk_view) --- */
-        div[class*="st-key-alert-"] {
-            border-radius: 6px;
-            padding: 12px 14px;
-            margin-bottom: 10px;
-        }
-        div[class*="st-key-alert-"] p {font-size: 0.86rem;}
-        div[class*="st-key-alert-red"]    {background: #FDECEA; border-left: 4px solid #B3261E;}
-        div[class*="st-key-alert-yellow"] {background: #FFF6E5; border-left: 4px solid #9A6100;}
-        div[class*="st-key-alert-orange"] {background: #FFF1E8; border-left: 4px solid #B4540F;}
-        div[class*="st-key-alert-info"]   {background: var(--surface-alt); border-left: 4px solid #5B6472;}
-        .legend-dot {
-            display: inline-block; width: 9px; height: 9px;
-            border-radius: 50%; margin: 0 5px 0 12px;
-        }
-
-        /* --- Радио и селект --- */
-        div[role="radiogroup"] label p {font-size: 0.86rem !important;}
-        div[data-baseweb="select"] > div {
-            border-radius: 5px !important;
-            border-color: var(--line) !important;
-            font-size: 0.86rem;
-        }
-
-        hr, [data-testid="stDivider"] {border-color: var(--line) !important;}
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
 
 
 def section_label(text: str) -> None:
@@ -467,79 +238,63 @@ def render_kpi_widgets(baseline_tasks: list[dict[str, Any]], current_tasks: list
     current_sprint — последний спринт с загруженным фактом (0 — Неделя 0): Say/Do
     показывается за него, PI до конца квартала — прогнозом по текущему плану.
     """
-    section_label("Квартальные показатели")
-    st.caption("Знаменатель обеих метрик зафиксирован на Неделе 0 и не меняется при пересчёте.")
-
     if not baseline_tasks:
-        st.info("Baseline пуст. Ожидание данных для расчета KPI.")
         return
-
     current_sprint = int(current_sprint or 0)
     metrics = kpi_breakdown(baseline_tasks, current_tasks, current_sprint=current_sprint)
-
     quarter_over = current_sprint >= 6
-    pi_mode = "fact" if quarter_over else "forecast"
-    pi_fact = metrics["pi_predictability"][pi_mode]["value"]
-    pi_norm = [f"{v:g}" for v in metrics["norms"]["pi_predictability"]]
-    pi_range = tuple(float(v) for v in metrics["norms"]["pi_predictability"])
-
-    say_do_list = metrics["say_do"]
-    latest_sd = next((row for row in say_do_list if row["sprint"] == current_sprint), None)
-    sd_val = latest_sd["value"] if latest_sd else 0.0
-    sd_norm = [f"{v:g}" for v in metrics["norms"]["say_do"]]
-    sd_range = tuple(float(v) for v in metrics["norms"]["say_do"])
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        pi_in_norm = pi_range[0] <= pi_fact <= pi_range[1]
-        st.metric(
-            label=(f"PI Predictability{'' if quarter_over else ' · прогноз'} "
-                   f"(норма {pi_norm[0]}–{pi_norm[1]}%)"),
-            value=f"{pi_fact:.1f}%",
-            delta="В пределах нормы" if pi_in_norm else "Отклонение от нормы",
-            delta_color="normal" if pi_in_norm else "inverse"
-        )
-
-    with col2:
-        if latest_sd is None or latest_sd.get("status") in ("future", "no_data"):
-            st.metric(
-                label=f"Say/Do Ratio (норма {sd_norm[0]}–{sd_norm[1]}%)",
-                value="—",
-                delta=latest_sd["status_label"] if latest_sd else "Факт спринтов ещё не загружен",
-                delta_color="off",
-            )
-            return
-        sd_in_norm = sd_range[0] <= sd_val <= sd_range[1]
-        st.metric(
-            label=f"Say/Do Ratio · спринт {latest_sd['sprint']} (норма {sd_norm[0]}–{sd_norm[1]}%)",
-            value=f"{sd_val:.1f}%",
-            delta="В пределах нормы" if sd_in_norm else "Отклонение от нормы",
-            delta_color="normal" if sd_in_norm else "inverse"
-        )
+    pi = metrics["pi_predictability"]["fact" if quarter_over else "forecast"]
+    pi_value = pi["value"]
+    pi_norm = metrics["norms"]["pi_predictability"]
+    latest = next((row for row in metrics["say_do"] if row["sprint"] == current_sprint), None)
+    included = [t for t in current_tasks if t.get("decision") == "included"]
+    teams = {t.get("team_id") for t in included if t.get("team_id")}
+    done = sum(t.get("status") == "Done" for t in included)
+    cols = st.columns(4)
+    with cols[0]:
+        metric_card("Задачи в квартале", str(len(included)), f"{done} выполнено из {len(included)}", "plan")
+    with cols[1]:
+        metric_card("PI Predictability" + ("" if quarter_over else " · прогноз"),
+                    "—" if pi.get("status") == "no_data" else f"{pi_value:.1f}%",
+                    f"Норма {pi_norm[0]:g}–{pi_norm[1]:g}%", "chart",
+                    "success" if pi_norm[0] <= pi_value <= pi_norm[1] else "warning")
+    with cols[2]:
+        has_fact = latest is not None and latest.get("status") not in ("future", "no_data")
+        metric_card("Say/Do Ratio", f"{latest['value']:.1f}%" if has_fact else "—",
+                    f"Спринт {current_sprint} · норма 90–105%" if has_fact else "Ожидаем факт спринта", "check",
+                    ("success" if latest["status"] == "ok" else "warning") if has_fact else "muted")
+    with cols[3]:
+        metric_card("Команды в плане", str(len(teams)), f"Учтено {current_sprint} из 6 спринтов", "people")
 
 
 def main() -> None:
     """Инициализирует Streamlit-страницу, State Machine и сайдбар-навигацию."""
-    st.set_page_config(page_title=APP_TITLE, layout="wide")
+    st.set_page_config(page_title=APP_TITLE, page_icon="◈", layout="wide")
     inject_custom_css()
     init_session_state()
 
-    if os.path.exists(LOGO_PATH):
-        st.sidebar.image(LOGO_PATH, width="stretch")
-
-    st.sidebar.markdown("### Данные и навигация")
+    with st.sidebar:
+        render_brand()
+        section_label("Рабочее пространство")
+        with st.container(key="sidebar-nav"):
+            page = st.radio("Раздел", options=PAGES, format_func=PAGE_LABELS.get,
+                            key="navigation", label_visibility="collapsed")
 
     # СОСТОЯНИЕ 0: Мастер-датасет не загружен
     if "baseline" not in st.session_state.calculated_plans:
-        st.title("Инициализация квартала")
-        st.caption("Загрузите мастер-датасет, чтобы построить план квартала, риски и звёздную карту.")
-
-        uploaded_file = st.file_uploader(
-            "Загрузите Master-датасет (.xlsx)",
-            type=["xlsx"],
-            help="Файл инициализации плана. Служит основой для расчета Baseline и KPI."
-        )
+        render_header(page, "Начало работы · Неделя 0")
+        uploaded_file = render_welcome()
+        demo_path = os.path.join(project_root, "data", "raw", "Хакатон_датасетс_правками_по_списку_вопросов_1.xlsx")
+        demo_requested = False
+        if os.path.exists(demo_path):
+            demo_requested = st.button("Открыть пример на демо-данных", key="load_demo")
+        if demo_requested:
+            with open(demo_path, "rb") as demo_file:
+                uploaded_file = BytesIO(demo_file.read())
+                uploaded_file.name = os.path.basename(demo_path)
+        with st.sidebar:
+            st.html(f'<div class="soft-sidebar-note">{icon("file")}<strong>Начните с данных</strong>'
+                    '<p>Загрузите мастер-датасет, чтобы открыть план, риски и карту компетенций.</p></div>')
 
         if uploaded_file:
             try:
@@ -559,10 +314,12 @@ def main() -> None:
                 st.error(f"Не удалось прочитать мастер-датасет: {reason}")
                 with st.expander("Технические детали"):
                     st.code(f"{type(e).__name__}: {e}")
+        render_footer()
         return  # Полная блокировка остального UI до загрузки Мастера
 
     # СОСТОЯНИЕ 1-6: Пайплайн загрузки спринтов в Сайдбаре
-    st.sidebar.markdown("### Загрузка данных")
+    with st.sidebar:
+        section_label("Данные квартала")
 
     with st.sidebar.expander("Мастер-датасет · Неделя 0", expanded=False):
         st.caption(st.session_state.get("master_name") or "Датасет загружен.")
@@ -578,7 +335,8 @@ def main() -> None:
     st.sidebar.markdown("---")
 
     # НАВИГАЦИЯ (Выбор текущего хронологического среза)
-    st.sidebar.markdown("### Режим просмотра")
+    with st.sidebar:
+        section_label("Режим просмотра")
 
     options = {"baseline": "Снимок (Baseline Неделя 0)"}
     for i in range(1, 7):
@@ -597,11 +355,9 @@ def main() -> None:
             selected_key = k
             break
 
-    page = st.sidebar.selectbox("Раздел", options=["План (PI-цикл)", "Всё сразу или по плану",
-                                                   "Риски и Алерты", "Звёздная карта"])
-
-    st.sidebar.markdown("---")
-    st.sidebar.caption("Кронверкские псы · хакатон ПочтаТех")
+    with st.sidebar:
+        st.html(f'<div class="soft-sidebar-note">{icon("plan")}<strong>Каждый спринт — шаг к цели</strong>'
+                '<p>Загружайте факт каждые две недели. План и риски пересчитаются автоматически.</p></div>')
 
     # РЕНДЕР ИНТЕРФЕЙСА
     active_state = st.session_state.calculated_plans[selected_key]
@@ -609,11 +365,12 @@ def main() -> None:
     alerts = active_state["alerts"]
     starmap = active_state["starmap"]
 
+    render_header(page, selected_mode_label)
     render_kpi_widgets(plan_dict.get("baseline", []), plan_dict.get("current", []),
                        plan_dict.get("current_sprint", 0))
-    st.divider()
-
-    if page == "План (PI-цикл)":
+    if page == "Обзор":
+        render_dashboard_view(plan_dict, alerts, starmap)
+    elif page == "План (PI-цикл)":
         render_plan_view(plan_dict, selected_mode_label, alerts, starmap)
     elif page == "Всё сразу или по плану":
         render_overload_view((st.session_state.master_dataset or {}).get("overload"))
@@ -622,6 +379,7 @@ def main() -> None:
                          (st.session_state.master_dataset or {}).get("data_quality") or [])
     elif page == "Звёздная карта":
         render_star_map_view(starmap)
+    render_footer()
 
 
 if __name__ == "__main__":
