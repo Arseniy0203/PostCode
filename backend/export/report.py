@@ -129,6 +129,58 @@ def plan_rows(plan: dict[str, Any], team: str | None = None,
     return rows
 
 
+def fact_template_rows(plan: dict[str, Any], engineers: Iterable[dict[str, Any]],
+                       sprint: int) -> list[dict[str, Any]]:
+    """Шаблон факта спринта: что по плану идёт в этом спринте и сколько часов.
+
+    Команда правит статус и часы и загружает файл обратно — не нужно собирать
+    таблицу с нуля и гадать про формат.
+    """
+    role_of = {str(e.get("engineer_id")): str(e.get("role") or "") for e in engineers or []}
+    rows = []
+    for task in plan.get("current") or []:
+        if field(task, "status") == "Done" or field(task, "decision") != "included":
+            continue
+        allocation = field(task, "allocation") or {}
+        hours = allocation.get(str(sprint)) or allocation.get(sprint) or {}
+        closes = field(task, "forecast_end_sprint") == sprint or end_sprint(task) == sprint
+        if not hours and not closes:
+            continue
+        row: dict[str, Any] = {
+            "task_id": task_id(task),
+            "summary": field(task, "summary") or "",
+            "status": "Done" if closes else "InProgress",
+        }
+        for engineer, value in (hours or {}).items():
+            role = role_of.get(str(engineer)) or str(engineer)
+            row[role] = round(float(row.get(role, 0)) + float(value), 1)
+        rows.append(row)
+    return rows
+
+
+def fact_template_bytes(plan: dict[str, Any], engineers: Iterable[dict[str, Any]],
+                        sprint: int) -> bytes:
+    """Книга Excel с шаблоном факта: лист «Факт спринта» и лист «Как заполнять»."""
+    rows = fact_template_rows(plan, engineers, sprint)
+    frame = pd.DataFrame(rows)
+    howto = pd.DataFrame({f"Как заполнять факт спринта {sprint}": [
+        "Колонка status: Done — задача закрыта, InProgress — работа идёт, "
+        "Cancelled — отменена заказчиком.",
+        "Колонки ролей: часы, фактически потраченные В ЭТОМ спринте (не нарастающим итогом).",
+        "Задачу, которой не было в плане, можно дописать строкой — укажите task_id и часы.",
+        "Строку задачи, по которой в спринте не работали, оставьте с нулями или удалите.",
+        "Колонка summary — для чтения, система её не использует.",
+    ]})
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        (frame if not frame.empty
+         else pd.DataFrame(columns=["task_id", "summary", "status"])).to_excel(
+            writer, sheet_name="Факт спринта", index=False)
+        howto.to_excel(writer, sheet_name="Как заполнять", index=False)
+        _autosize(writer)
+    return buffer.getvalue()
+
+
 def alert_rows(alerts: Iterable[Any] | None) -> list[dict[str, Any]]:
     rows = []
     for alert in alerts or []:

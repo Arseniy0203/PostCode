@@ -159,8 +159,8 @@ hr { border-color: var(--soft-line); }
 div[class*="st-key-alert-"] { border-radius: .8rem; padding: 12px 14px; margin-bottom: 10px; }
 div[class*="st-key-alert-"] p { font-size: .86rem; }
 div[class*="st-key-alert-red"] { background: #FDECEA; border-left: 4px solid #B3261E; }
-div[class*="st-key-alert-yellow"] { background: #FFF6E5; border-left: 4px solid #9A6100; }
-div[class*="st-key-alert-orange"] { background: #FFF1E8; border-left: 4px solid #B4540F; }
+div[class*="st-key-alert-yellow"] { background: #FDF6E3; border-left: 4px solid #D4A017; }
+div[class*="st-key-alert-orange"] { background: #EBF1FE; border-left: 4px solid #1D4ED8; }
 div[class*="st-key-alert-info"] { background: var(--soft-bg); border-left: 4px solid #5B6472; }
 .legend-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin: 0 5px 0 12px; }
 [data-testid="stDownloadButton"] button { border: 0; border-radius: .6rem; background: var(--soft-dark); color: white; box-shadow: 0 4px 7px -1px rgb(0 0 0 / 10%); }
