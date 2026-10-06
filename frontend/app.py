@@ -379,8 +379,12 @@ def render_kpi_widgets(baseline_tasks: list[dict[str, Any]], current_tasks: list
                     page="Показатели", section="PI Predictability")
     with cols[2]:
         has_fact = latest is not None and latest.get("status") not in ("future", "no_data")
+        # Процент без абсолютных чисел читается как ошибка: при маленьком плане
+        # спринта «287%» — это «догнали хвост», а не фантастическая скорость
+        note = (f"Спринт {current_sprint}: {latest['done_sp']:g} из "
+                f"{latest['planned_sp']:g} SP плана" if has_fact else "Ожидаем факт спринта")
         metric_card("Say/Do Ratio", f"{latest['value']:.1f}%" if has_fact else "—",
-                    f"Спринт {current_sprint} · норма 90–105%" if has_fact else "Ожидаем факт спринта", "check",
+                    note, "check",
                     ("success" if latest["status"] == "ok" else "warning") if has_fact else "muted",
                     page="Показатели", section="Say/Do")
     with cols[3]:
