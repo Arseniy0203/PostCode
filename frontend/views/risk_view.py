@@ -8,6 +8,7 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
+from .components import detail_grid, styled_table
 from .labels import sprint_moment
 from .text import collapse_task_lists
 
@@ -117,7 +118,7 @@ def _render_data_quality(items: list[dict[str, Any]]) -> None:
         "Что не так": item.get("description", ""),
         "Что сделать": item.get("recommendation", ""),
     } for item in items])
-    st.dataframe(table, hide_index=True, width="stretch")
+    styled_table(table)
     st.caption(f"Записей: {len(items)}. Планировщик берёт за истину калькулятор сметы по ролям, "
                "а расхождение показывает здесь.")
 
@@ -210,5 +211,5 @@ def render_risk_view(alerts: list[Any], resolved: list[Any] | None = None,
     if resolved:
         with st.expander(f"Решено с прошлого пересчёта · {len(resolved)}"):
             for alert in resolved:
-                st.markdown(f"{_title(alert)}\n\n{alert.get('description', '')}")
-                st.markdown("---")
+                st.markdown(_title(alert))
+                detail_grid([("Решено", alert.get("description", ""))], tone="success")

@@ -7,6 +7,7 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
+from .components import detail_grid
 from .labels import decision_label, hours, sprint_range
 from .text import collapse_task_lists
 
@@ -55,8 +56,7 @@ def _render_facts(task: dict[str, Any]) -> None:
     if "rank" in facts and facts.get("total"):
         facts = {**facts, "rank": f"{facts['rank']} из {facts['total']}"}
     with st.expander("Расчёт, на котором основано решение"):
-        for key, _ in rows:
-            st.markdown(f"- **{FACT_LABELS[key]}:** {_fact_value(key, facts[key])}")
+        detail_grid([(FACT_LABELS[key], _fact_value(key, facts[key])) for key, _ in rows], compact=True)
 
 
 RISK_TITLES = {"red": "Критический риск", "yellow": "Каскадный сдвиг",
@@ -119,27 +119,22 @@ def render_task_card(task: dict[str, Any], risks: list[dict[str, Any]] | None = 
     with st.container(border=True):
         st.subheader(f"{task.get('task_id', 'N/A')} — {task.get('summary', 'Без названия')}")
 
-        # 1. Основные параметры — одной строкой (крупные метрики обрезали длинные значения)
         sp = task.get("estimation_sp")
-        st.markdown(" · ".join([
-            f"Инициатива **{task.get('Номер инициативы') or task.get('prodf_id') or '—'}**",
-            f"команда **{task.get('team_id') or '—'}**",
-            f"приоритет (rung) **{task.get('rung', '—')}**",
-            f"**{sp:g} SP**" if isinstance(sp, (int, float)) else "SP —",
-        ]))
-
-        # 2. Решение и его причина
-        msg_type = {"included": st.success, "postponed": st.warning,
-                    "cancelled": st.error}.get(decision, st.info)
-        lines = [f"**{decision_label(task)}**"
-                 + (f" · {task['reason_label']}" if task.get("reason_label") else "")]
-        if task.get("target_label"):
-            lines.append(f"**Цель в квартале:** {task['target_label']}")
-        if task.get("reason_detail"):
-            lines.append(task["reason_detail"])
-        if task.get("recommendation"):
-            lines.append(f"**Что можно сделать:** {task['recommendation']}")
-        msg_type("\n\n".join(lines))
+        detail_grid([
+            ("Инициатива", task.get("Номер инициативы") or task.get("prodf_id") or "—"),
+            ("Команда", task.get("team_id") or "—"),
+            ("Приоритет", task.get("rung", "—")),
+            ("Оценка", f"{sp:g} SP" if isinstance(sp, (int, float)) else "—"),
+        ], compact=True)
+        tone = {"included": "success", "postponed": "warning", "cancelled": "danger"}.get(decision, "neutral")
+        detail_grid([
+            ("Решение", decision_label(task)),
+            ("Причина", task.get("reason_label")),
+            ("Цель в квартале", task.get("target_label")),
+            ("Сроки", sprint_range(task.get("planned_start_sprint"), task.get("planned_end_sprint"))),
+            ("Обоснование", task.get("reason_detail")),
+            ("Что можно сделать", task.get("recommendation")),
+        ], tone=tone)
 
         _render_facts(task)
         _render_risks(risks or [])
@@ -154,9 +149,8 @@ def render_task_card(task: dict[str, Any], risks: list[dict[str, Any]] | None = 
             unstaffed = task.get("unstaffed_hh") or {}
 
             if isinstance(est_hh, dict) and est_hh:
-                for role, value in est_hh.items():
-                    note = " — нет исполнителя" if role in unstaffed else ""
-                    st.write(f"- {role}: {hours(value)} ч{note}")
+                detail_grid([(role, f"{hours(value)} ч" + (" · нет исполнителя" if role in unstaffed else ""))
+                             for role, value in est_hh.items()], compact=True)
             elif isinstance(est_hh, (int, float)):
                 # Fallback для сырого датасета, где это число
                 st.write(f"- Всего: {hours(est_hh)} ч")
@@ -191,6 +185,6 @@ def render_task_card(task: dict[str, Any], risks: list[dict[str, Any]] | None = 
             if not blocks and not blocked_by:
                 st.write("Нет зависимостей.")
             if blocked_by:
-                st.write("Ждёт задачи: " + ", ".join(f"`{b}`" for b in blocked_by))
+                detail_grid([("Ждёт задачи", ", ".join(blocked_by))])
             if blocks:
-                st.write("Блокирует задачи: " + ", ".join(f"`{b}`" for b in blocks))
+                detail_grid([("Блокирует задачи", ", ".join(blocks))])

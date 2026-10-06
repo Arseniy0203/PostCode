@@ -9,8 +9,10 @@ import streamlit as st
 from streamlit.runtime.uploaded_file_manager import UploadedFile
 
 ASSETS = Path(__file__).resolve().parent / "assets"
-PAGES = ["Обзор", "План (PI-цикл)", "Всё сразу или по плану", "Риски и Алерты", "Звёздная карта"]
+PAGES = ["Титульная", "Обзор", "План (PI-цикл)", "Показатели", "Всё сразу или по плану", "Риски и Алерты", "Звёздная карта"]
 PAGE_LABELS = {
+    "Титульная": "Главная",
+    "Показатели": "Показатели KPI",
     "Обзор": "Обзор квартала",
     "План (PI-цикл)": "Квартальный план",
     "Всё сразу или по плану": "Загрузка команд",
@@ -47,8 +49,11 @@ def inject_custom_css() -> None:
     st.html(f"<style>{(ASSETS / 'soft-ui.css').read_text(encoding='utf-8')}</style>")
 
 
-def navigate(page: str) -> None:
-    st.session_state["navigation"] = page
+def navigate(page: str, section: str | None = None) -> None:
+    # Applied before the sidebar widget is built, on the next run.
+    st.session_state["next_page"] = page
+    if section is not None:
+        st.session_state["kpi_section"] = section
 
 
 def render_brand() -> None:
@@ -66,20 +71,45 @@ def render_header(page: str, snapshot: str) -> None:
             f'<span class="soft-status-dot"></span>{escape(snapshot)}</div></div>')
 
 
-def metric_card(label: str, value: str, note: str, symbol: str, tone: str = "muted") -> None:
-    st.html(f'<article class="soft-metric"><div><p>{escape(label)}</p>'
-            f'<strong>{escape(value)}</strong><small class="soft-{tone}">{escape(note)}</small>'
-            f'</div><span class="soft-metric-icon">{icon(symbol)}</span></article>')
+def metric_card(label: str, value: str, note: str, symbol: str, tone: str = "muted",
+                page: str | None = None, section: str | None = None) -> None:
+    with st.container(key=f"metric-{symbol}"):
+        content, action = st.columns([4, 1], gap="small")
+        decoration = "" if page else f'<span class="soft-metric-icon">{icon(symbol)}</span>'
+        content.html(f'<article class="soft-metric"><div><p>{escape(label)}</p>'
+                f'<strong>{escape(value)}</strong><small class="soft-{tone}">{escape(note)}</small>'
+                f'</div>{decoration}</article>')
+        if page:
+            symbols = {"plan": "calendar_month", "chart": "bar_chart", "check": "done", "people": "groups"}
+            action.button(f"Открыть: {label}", icon=f":material/{symbols[symbol]}:",
+                      key=f"kpi-{symbol}", help=f"Открыть: {label}", type="primary",
+                      on_click=navigate, args=(page, section))
+
+
+def render_title(ready: bool = False, demo: bool = False) -> None:
+    st.html(f'<div class="soft-hero"><div class="soft-hero-copy">'
+            '<p class="soft-eyebrow">ПОЧТАТЕХ / PI-ПЛАНИРОВАНИЕ</p>'
+            '<h1>План квартала<br>и возможности команды</h1>'
+            '<p>Распределяйте задачи по спринтам, проверяйте загрузку и отслеживайте '
+            'риски. Карта компетенций поможет найти дефицит специалистов.</p>'
+            '<span class="soft-pill">6 спринтов · 12 недель</span></div>'
+            f'<div class="soft-rocket"><img src="{asset_uri("rocket-white.png")}" alt="" /></div></div>')
+    if ready:
+        st.caption("Демо-сценарий: все спринты уже рассчитаны." if demo else "Датасет загружен. Рабочее пространство готово.")
+        left, right = st.columns(2)
+        left.button("Открыть обзор квартала", key="title_overview", type="primary",
+                    on_click=navigate, args=("Обзор",), width="stretch")
+        right.button("Открыть квартальный план", key="title_plan",
+                     on_click=navigate, args=("План (PI-цикл)",), width="stretch")
+        st.html('<div class="detail-grid"><section class="detail-cell"><span>Планирование</span>'
+                '<p>Задачи, зависимости и распределение по шести спринтам.</p></section>'
+                '<section class="detail-cell"><span>Контроль выполнения</span><p>Сравнение исходного плана с фактом и прогнозом.</p></section>'
+                '<section class="detail-cell"><span>Ресурсы и риски</span><p>Загрузка команд, нехватка часов и сдвиги сроков.</p></section>'
+                '<section class="detail-cell"><span>Компетенции</span><p>Карта инженеров и рекомендации по найму и обучению.</p></section></div>')
 
 
 def render_welcome() -> UploadedFile | None:
-    st.html(f'<div class="soft-hero"><div class="soft-hero-copy">'
-            '<p class="soft-eyebrow">ПЛАНИРУЙТЕ. АНАЛИЗИРУЙТЕ. ДОСТИГАЙТЕ.</p>'
-            '<h1>Большие планы.<br>Понятные шаги.</h1>'
-            '<p>Весь квартал в одном пространстве: задачи, загрузка команд, '
-            'риски и компетенции. Начните с загрузки вашего датасета.</p>'
-            '<span class="soft-pill">6 спринтов · 12 недель · единый план</span></div>'
-            f'<div class="soft-rocket"><img src="{asset_uri("rocket-white.png")}" alt="" /></div></div>')
+    render_title()
     left, right = st.columns([1.5, 1], gap="large")
     with left, st.container(border=True, key="soft-card-upload"):
         st.subheader("Создайте план квартала")

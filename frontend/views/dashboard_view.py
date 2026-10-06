@@ -11,6 +11,7 @@ import streamlit as st
 from backend.recalculation.plan_fields import actual_end_sprint, end_sprint, is_done, planned_end_sprint
 from frontend.theme import asset_uri, navigate
 from .risk_view import CATEGORY_LABELS
+from .components import chart_table
 
 
 def completion_series(plan: dict[str, Any]) -> list[dict[str, Any]]:
@@ -90,7 +91,9 @@ def render_dashboard_view(plan: dict[str, Any], alerts: list[dict[str, Any]], st
 
     left, right = st.columns([.9, 1.35], gap="large")
     with left, st.container(border=True, key="soft-card-starts"):
-        st.altair_chart(_start_chart(tasks), width="stretch", theme=None)
+        start_rows = [{"Спринт": i, "Начинают работу": sum(t.get("planned_start_sprint") == i for t in tasks)}
+                      for i in range(1, 7)]
+        chart_table(_start_chart(tasks), start_rows, key="task-starts")
         st.subheader("Старт задач по спринтам")
         st.caption("Распределение включённых задач в выбранном срезе.")
         st.html('<div class="soft-mini-stats">'
@@ -101,8 +104,9 @@ def render_dashboard_view(plan: dict[str, Any], alerts: list[dict[str, Any]], st
     with right, st.container(border=True, key="soft-card-completion"):
         st.subheader("Выполнение квартального плана")
         st.caption("Завершение задач нарастающим итогом · исходные обязательства")
-        st.altair_chart(_completion_chart(plan), width="stretch", theme=None)
-        st.caption("Факт появится после загрузки спринтов." if not sprint
+        chart_table(_completion_chart(plan), completion_series(plan), key="completion")
+        st.caption(("Для просмотра факта выберите срез после спринта в боковой панели."
+                    if st.session_state.get("demo_mode") else "Факт появится после загрузки спринтов.") if not sprint
                    else f"Факт учтён по спринт {sprint}. Будущие спринты показаны только в прогнозе.")
 
     left, right = st.columns([1.4, 1], gap="large")
