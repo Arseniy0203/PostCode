@@ -11,6 +11,7 @@ import os
 import re
 import sys
 import copy
+from pathlib import Path
 from typing import Any
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -20,12 +21,13 @@ if project_root not in sys.path:
 
 import streamlit as st
 
+from backend.export.report import fact_template_bytes
 from backend.starmap.bus_factor import starmap_summary
 from backend.recalculation.recalc import apply_sprint_fact
 from backend.kpi.metrics import kpi_breakdown
 from backend.recalculation.pipeline import (
     dataset_from_parsed,
-    fact_from_dataset_excel,
+    fact_from_any_excel,
     week0_from_excel,
 )
 
@@ -41,6 +43,14 @@ from views.overload_view import render_overload_view
 
 
 APP_TITLE = os.getenv("APP_TITLE", "ПочтаТех: PI-Планирование")
+TEMPLATE_PATH = os.getenv("TEMPLATE_PATH", os.path.join("data", "template",
+                                                        "Шаблон_датасета.xlsx"))
+XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def _looks_like_fact(name: str) -> bool:
+    """Имя вида Sprint_2_Fact.xlsx: файл факта спринта, а не мастер-датасет."""
+    return bool(re.search(r"(?:sprint|спринт)[ _-]*\d", name or "", flags=re.IGNORECASE))
 
 
 def section_label(text: str) -> None:
@@ -49,13 +59,15 @@ def section_label(text: str) -> None:
 
 
 @st.cache_data(show_spinner="Сборка Baseline и проверка рисков...")
-def process_baseline(file_bytes: bytes) -> dict[str, Any]:
+def process_baseline(file_bytes: bytes,
+                     defer: tuple[tuple[str, str], ...] = ()) -> dict[str, Any]:
     """Парсит исходный датасет и строит Baseline тем же конвейером, что и пересчёт.
 
     Задачи в работе планируются на остаток (смета − Spent_time_roles), ёмкость
     команды — средний velocity × 0.8 (backend.recalculation.pipeline.week0_from_excel).
+    defer — снятые вручную задачи (кортеж пар, чтобы работал кэш).
     """
-    state = week0_from_excel(file_bytes)
+    state = week0_from_excel(file_bytes, defer=dict(defer) or None)
     result = {key: state[key] for key in ("parsed", "clean_deps", "plan", "alerts", "starmap")}
     result["data_quality"] = list((state.get("report") or {}).get("data_quality") or [])
     result["overload"] = state.get("overload")
@@ -71,7 +83,7 @@ def process_fact(prev_plan: dict[str, Any], master_deps: list[dict[str, Any]], m
     Файл факта — датасет с НАКОПЛЕННЫМИ часами (как в demo_scenarios): уже учтённое
     вычитается, в пересчёт идут часы именно за этот спринт.
     """
-    fact = fact_from_dataset_excel(fact_file_bytes, prev_plan)
+    fact = fact_from_any_excel(fact_file_bytes, prev_plan)
     capacity = prev_plan.get("capacity") or dataset_from_parsed(
         {"team_history": master_history, "engineers_profiles": master_engineers})["capacity"]
     updated_plan = apply_sprint_fact(
@@ -141,13 +153,94 @@ def _file_sprint_mismatch(name: str, sprint: int) -> str | None:
     return None
 
 
+def manual_defer() -> dict[str, str]:
+    """Задачи, снятые с квартала вручную: {task_id: комментарий}."""
+    return st.session_state.setdefault("manual_defer", {})
+
+
+def _rebuild_with_manual() -> None:
+    """Пересобирает план после ручного решения: Неделя 0 заново, затем факты.
+
+    Снятая задача не планируется вовсе, её ёмкость достаётся остальным, поэтому
+    пересчитывать нужно с Недели 0, а не править готовый план.
+    """
+    master_bytes = st.session_state.get("master_bytes")
+    if not master_bytes:
+        st.session_state.fact_message = ("warning", "Чтобы менять план вручную, загрузите "
+                                                    "мастер-датасет заново.")
+        return
+    defer = tuple(sorted(manual_defer().items()))
+    base_state = process_baseline(master_bytes, defer)
+    st.session_state.master_dataset = base_state
+    st.session_state.calculated_plans["baseline"] = {
+        "plan": base_state["plan"],
+        "alerts": base_state["alerts"],
+        "starmap": base_state["starmap"],
+    }
+    _recalculate_from(1, base_state)
+
+
+DEMO_SCENARIO = os.path.join("demo_scenarios", "Scenario_3_Canceled_Task")
+
+
+def _load_demo(master_path: str) -> None:
+    """Демо: мастер-датасет и факты всех шести спринтов сразу.
+
+    Переключатель срезов («Неделя 0 → после спринта N») без фактов показывать
+    нечего, поэтому пример открывается уже с пройденным кварталом.
+    """
+    with st.spinner("Готовим пример: план квартала и факты шести спринтов…"):
+        master_bytes = Path(master_path).read_bytes()
+        base_state = process_baseline(master_bytes)
+        st.session_state.master_dataset = base_state
+        st.session_state.master_name = os.path.basename(master_path)
+        st.session_state.master_bytes = master_bytes
+        st.session_state.manual_defer = {}
+        st.session_state.calculated_plans = {"baseline": {
+            "plan": base_state["plan"],
+            "alerts": base_state["alerts"],
+            "starmap": base_state["starmap"],
+        }}
+        scenario = Path(project_root) / DEMO_SCENARIO
+        files = {}
+        for sprint in range(1, 7):
+            fact_file = scenario / f"Sprint_{sprint}_Fact.xlsx"
+            if fact_file.exists():
+                files[sprint] = (fact_file.name, fact_file.read_bytes())
+        st.session_state.fact_files = files
+        last, error = _recalculate_from(1, base_state)
+    st.session_state.fact_message = (
+        ("error", f"Пример загружен частично. {error}") if error else
+        ("success", f"Пример загружен: план Недели 0 и факты спринтов 1–{last}. "
+                    "Переключайте срезы в «Режиме просмотра»."))
+    _reset_uploaders()
+    st.rerun()
+
+
+def _fact_problem(name: str, data: bytes, sprint: int) -> str | None:
+    """Что не так с файлом факта: чужой спринт, мастер-датасет или дубль.
+
+    Все три случая — следствие похожести файлов: факты спринтов сделаны в том же
+    формате, что и мастер-датасет, поэтому перепутать их легко.
+    """
+    if data and data == st.session_state.get("master_bytes"):
+        return ("Это мастер-датасет Недели 0, а не факт спринта: файл совпадает с тем, "
+                "что уже загружен как исходный план.")
+    for loaded_sprint, (loaded_name, loaded_data) in st.session_state.get("fact_files", {}).items():
+        if loaded_sprint != sprint and data and data == loaded_data:
+            return (f"Этот файл уже загружен как факт спринта {loaded_sprint} "
+                    f"(«{loaded_name}»): в нём нет работы за спринт {sprint}.")
+    return _file_sprint_mismatch(name, sprint)
+
+
 def _accept_fact(sprint: int, uploaded: Any, master: dict[str, Any], confirmed: bool = False) -> None:
     """Сохраняет файл спринта и пересчитывает его и все следующие загруженные спринты.
 
-    Файл с другим номером спринта в имени не применяется без подтверждения.
+    Подозрительный файл (чужой спринт, мастер-датасет, дубль) не применяется
+    без подтверждения.
     """
     name, data = (uploaded if isinstance(uploaded, tuple) else (uploaded.name, uploaded.getvalue()))
-    if not confirmed and _file_sprint_mismatch(name, sprint):
+    if not confirmed and _fact_problem(name, data, sprint):
         st.session_state.pending_fact = (sprint, name, data)
         _reset_uploaders()
         st.rerun()
@@ -184,7 +277,7 @@ def render_fact_uploads(master: dict[str, Any]) -> None:
     pending = st.session_state.get("pending_fact")
     if pending:
         sprint, name, data = pending
-        st.sidebar.warning(f"{_file_sprint_mismatch(name, sprint)} Файл «{name}» пока не применён.")
+        st.sidebar.warning(f"{_fact_problem(name, data, sprint)} Файл «{name}» пока не применён.")
         col_yes, col_no = st.sidebar.columns(2)
         if col_yes.button("Всё равно загрузить", key="pending_yes", width="stretch"):
             _accept_fact(sprint, (name, data), master, confirmed=True)
@@ -227,11 +320,33 @@ def render_fact_uploads(master: dict[str, Any]) -> None:
                 f"Загрузить факт Спринта {i}",
                 type=["xlsx"],
                 key=f"upload_fact_{i}_{nonce}",
-                help="Файл в формате датасета с накопленными часами — как в demo_scenarios/.",
+                help="Подойдёт шаблон факта (кнопка ниже) или датасет с накопленными "
+                     "часами — как в demo_scenarios/.",
             )
             if fact_file:
                 _accept_fact(i, fact_file, master)
+            _render_fact_template(i)
             break
+
+
+def _render_fact_template(sprint: int) -> None:
+    """Шаблон факта: задачи этого спринта и плановые часы — остаётся вписать факт."""
+    plans = st.session_state.calculated_plans
+    plan = (plans.get(sprint - 1) or plans.get("baseline") or {}).get("plan")
+    engineers = ((st.session_state.master_dataset or {}).get("parsed") or {}).get(
+        "engineers_profiles") or []
+    if not plan:
+        return
+    try:
+        data = fact_template_bytes(plan, engineers, sprint)
+    except Exception:  # noqa: BLE001 — шаблон не должен ронять боковую панель
+        return
+    st.sidebar.download_button(
+        f"Бланк факта спринта {sprint} (заполнен планом)", data=data,
+        file_name=f"Факт_спринта_{sprint}.xlsx", mime=XLSX_MIME, width="stretch",
+        help="В файле уже стоят задачи спринта, ожидаемый статус и часы по плану. "
+             "Отметьте, что пошло иначе, и загрузите его обратно. Если всё по плану — "
+             "загрузите без изменений.")
 
 
 def render_kpi_widgets(baseline_tasks: list[dict[str, Any]], current_tasks: list[dict[str, Any]],
@@ -312,20 +427,50 @@ def main() -> None:
     if not ready:
         render_header("Титульная", "Начало работы")
         uploaded_file = render_welcome()
-        if st.button("Открыть пример на демо-данных", key="load_demo", type="primary"):
-            try:
-                start_demo()
+        demo_path = os.path.join(project_root, "data", "raw", "Хакатон_датасетс_правками_по_списку_вопросов_1.xlsx")
+        # Обе кнопки рядом с загрузчиком: нечего загружать — возьмите шаблон или
+        # посмотрите на демо-данных
+        col_template, col_demo = st.columns(2)
+        demo_requested = False
+        if os.path.exists(TEMPLATE_PATH):
+            with open(TEMPLATE_PATH, "rb") as template:
+                col_template.download_button(
+                    "Скачать шаблон датасета", data=template.read(),
+                    file_name=os.path.basename(TEMPLATE_PATH), mime=XLSX_MIME,
+                    help="Пустой файл с нужными таблицами и колонками: заполните своими "
+                         "данными и загрузите обратно.",
+                    width="stretch")
+        if os.path.exists(demo_path):
+            demo_requested = col_demo.button("Открыть пример на демо-данных", key="load_demo",
+                                             width="stretch")
+        if demo_requested:
+            _load_demo(demo_path)
+        with st.sidebar:
+            st.html(f'<div class="soft-sidebar-note">{icon("file")}<strong>Начните с данных</strong>'
+                    '<p>Загрузите мастер-датасет, чтобы открыть план, риски и карту компетенций.</p></div>')
+
+        if uploaded_file and _looks_like_fact(uploaded_file.name) and not st.session_state.get(
+                "master_confirmed"):
+            st.warning(f"Файл «{uploaded_file.name}» похож на факт спринта, а не на мастер-датасет "
+                       "Недели 0. С него план квартала начнётся так, будто работа уже выполнена.")
+            if st.button("Всё равно загрузить как мастер-датасет"):
+                st.session_state.master_confirmed = True
                 st.rerun()
-            except Exception as exc:
-                st.error(f"Не удалось подготовить демо: {exc}")
+            return
+
         if uploaded_file:
+            st.session_state.pop("master_confirmed", None)
             try:
                 base_state = process_baseline(uploaded_file.getvalue())
-                st.session_state.update(
-                    master_dataset=base_state, master_name=uploaded_file.name,
-                    fact_files={}, demo_mode=False, snapshot="baseline", next_page="Обзор",
-                    calculated_plans={"baseline": {key: base_state[key] for key in ("plan", "alerts", "starmap")}},
-                )
+                st.session_state.master_dataset = base_state
+                st.session_state.master_name = uploaded_file.name
+                st.session_state.master_bytes = uploaded_file.getvalue()
+                st.session_state.fact_files = {}
+                st.session_state.calculated_plans["baseline"] = {
+                    "plan": base_state["plan"],
+                    "alerts": base_state["alerts"],
+                    "starmap": base_state["starmap"]
+                }
                 st.rerun()
             except Exception as exc:
                 reason = str(exc) if isinstance(exc, ValueError) and str(exc) else "файл не похож на датасет в формате организаторов."
@@ -337,26 +482,21 @@ def main() -> None:
 
     demo = st.session_state.demo_mode
     with st.sidebar:
-        section_label("Демо-режим" if demo else "Данные квартала")
-    if demo:
-        scenario = st.sidebar.selectbox("Демо-сценарий", list(DEMO_SCENARIOS),
-                                        format_func=DEMO_SCENARIOS.get, key="demo_scenario")
-        if scenario != st.session_state.demo_loaded_scenario:
-            try:
-                master, snapshots = demo_snapshots(scenario)
-                st.session_state.update(master_dataset=master, calculated_plans=snapshots,
-                                        demo_loaded_scenario=scenario)
-            except Exception as exc:
-                st.error(f"Не удалось загрузить сценарий: {exc}")
-                return
-        st.sidebar.caption("Неделя 0 и все 6 спринтов готовы. Выберите срез ниже. Данные демонстрационные.")
-        st.sidebar.button("Выйти из демо", key="exit_demo", on_click=reset_workspace, width="stretch")
-    else:
-        with st.sidebar.expander("Мастер-датасет · Неделя 0", expanded=False):
-            st.caption(st.session_state.get("master_name") or "Датасет загружен.")
-            st.button("Сбросить весь план и начать заново", key="reset_plan",
-                      on_click=reset_workspace, width="stretch")
-        render_fact_uploads(st.session_state.master_dataset)
+        section_label("Данные квартала")
+
+    with st.sidebar.expander("Мастер-датасет · Неделя 0", expanded=False):
+        st.caption(st.session_state.get("master_name") or "Датасет загружен.")
+        if st.button("Сбросить весь план и начать заново", width="stretch"):
+            st.session_state.calculated_plans = {}
+            st.session_state.master_dataset = None
+            st.session_state.fact_files = {}
+            st.session_state.manual_defer = {}
+            _reset_uploaders()
+            st.rerun()
+
+    render_fact_uploads(st.session_state.master_dataset)
+
+    st.sidebar.markdown("---")
 
     with st.sidebar:
         section_label("Срез данных")
@@ -383,7 +523,12 @@ def main() -> None:
     elif page == "Показатели":
         render_kpi_view(plan_dict)
     elif page == "План (PI-цикл)":
-        render_plan_view(plan_dict, selected_mode_label, alerts, starmap)
+        def on_manual_change() -> None:
+            """Снятие задачи меняет весь план, поэтому пересобираем и перерисовываем."""
+            _rebuild_with_manual()
+            st.rerun()
+
+        render_plan_view(plan_dict, selected_mode_label, alerts, starmap, on_manual_change)
     elif page == "Всё сразу или по плану":
         render_overload_view((st.session_state.master_dataset or {}).get("overload"))
     elif page == "Риски и Алерты":

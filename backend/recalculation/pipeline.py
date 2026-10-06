@@ -304,6 +304,27 @@ def load_fact_excel(path: Path | str) -> dict[str, Any]:
     return fact_from_rows(frame.to_dict(orient="records"))
 
 
+def fact_from_any_excel(data: bytes | str | Path, plan: dict[str, Any]) -> dict[str, Any]:
+    """Факт спринта из любого из двух форматов.
+
+    Шаблон факта (task_id | status | роль: часы за спринт) — его отдаёт
+    интерфейс кнопкой «Скачать шаблон факта»; датасет с накопленными часами —
+    как в demo_scenarios. Различаем по первой строке: у шаблона это заголовок
+    таблицы, у датасета — маркер вида «Tasks (Таблица задач и скоринга)».
+    """
+    import io
+
+    import pandas as pd
+
+    source = io.BytesIO(data) if isinstance(data, bytes) else data
+    frame = pd.read_excel(source).dropna(how="all")
+    columns = [str(c).strip().lower() for c in frame.columns]
+    if "task_id" in columns:
+        frame.columns = [str(c).strip() for c in frame.columns]
+        return fact_from_rows(frame.to_dict(orient="records"))
+    return fact_from_dataset_excel(data, plan)
+
+
 def apply_uploaded_fact(plan: dict[str, Any], data: dict[str, Any], fact: dict[str, Any],
                         planner: Planner | None = None) -> dict[str, Any]:
     """Применяет загруженный пользователем факт за следующий спринт."""
@@ -323,13 +344,17 @@ def _parse_excel_bytes(data: bytes | str | Path) -> dict[str, Any]:
     return parse_excel(str(data) if isinstance(data, (str, Path)) else io.BytesIO(data))
 
 
-def week0_from_excel(data: bytes | str | Path, planner: Planner | None = None) -> dict[str, Any]:
+def week0_from_excel(data: bytes | str | Path, planner: Planner | None = None,
+                     defer: dict[str, str] | list[str] | None = None) -> dict[str, Any]:
     """План Недели 0 из загруженного Excel-датасета — тем же конвейером, что run_quarter.
 
     Задачи в работе планируются на остаток (смета − Spent_time_roles), ёмкость
     команды — средний velocity × 0.8, фантомные связи уходят в отчёт о качестве
     данных. Возвращает ключи, которые ждёт frontend/app.py (parsed, clean_deps,
     plan, alerts, starmap) и полный отчёт report.
+
+    defer — задачи, которые руководитель вручную снял с квартала (id или
+    {id: комментарий}): они не планируются, а их ёмкость достаётся остальным.
     """
     from backend.ingestion.parse_dataset import filter_orphan_dependencies
 
@@ -338,7 +363,7 @@ def week0_from_excel(data: bytes | str | Path, planner: Planner | None = None) -
     parsed = {**parsed, "task_dependencies": clean}
     dataset = dataset_from_parsed(parsed, [row["dependency"] for row in excluded]
                                   + list(parsed.get("duplicate_dependencies") or []))
-    plan = build_week0(dataset, planner)
+    plan = build_week0(dataset, planner, defer=defer)
     report = build_report(plan, dataset, planner)
     from backend.recalculation.overload import overload_report
     overload = _jsonable(overload_report(dataset, plan, report.get("strict_comparison")))

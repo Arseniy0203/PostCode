@@ -54,3 +54,28 @@ def test_pdf_is_valid_and_not_empty(state):
     data = pdf_bytes(state["plan"], state["alerts"], state["starmap"], team="Team-L")
     assert data.startswith(b"%PDF")
     assert len(data) > 5000
+
+
+def test_fact_template_round_trip(state):
+    """Шаблон факта должен приниматься обратно как факт спринта."""
+    import copy
+
+    from backend.export.report import fact_template_bytes, fact_template_rows
+    from backend.recalculation.pipeline import fact_from_any_excel
+    from backend.recalculation.recalc import apply_sprint_fact
+
+    plan = copy.deepcopy(state["plan"])
+    engineers = state["parsed"]["engineers_profiles"]
+    rows = fact_template_rows(plan, engineers, 1)
+    assert rows and all(r["task_id"] and r["статус"] for r in rows)
+
+    data = fact_template_bytes(plan, engineers, 1)
+    fact = fact_from_any_excel(data, plan)
+    assert set(fact["tasks"]) == {r["task_id"] for r in rows}
+
+    updated = apply_sprint_fact(plan=plan, fact=fact, dependencies=state["clean_deps"],
+                                engineers=engineers, capacity=plan["capacity"])
+    assert updated["current_sprint"] == 1
+    # Работа ровно по плану: срывов и каскадных сдвигов быть не должно
+    types = {a.type if hasattr(a, "type") else a["type"] for a in updated.get("alerts") or []}
+    assert not types & {"red", "yellow"}

@@ -151,8 +151,8 @@ hr { border-color: var(--soft-line); }
 div[class*="st-key-alert-"] { border-radius: .8rem; padding: 12px 14px; margin-bottom: 10px; }
 div[class*="st-key-alert-"] p { font-size: .86rem; }
 div[class*="st-key-alert-red"] { background: #FDECEA; border-left: 4px solid #B3261E; }
-div[class*="st-key-alert-yellow"] { background: #FFF6E5; border-left: 4px solid #9A6100; }
-div[class*="st-key-alert-orange"] { background: #FFF1E8; border-left: 4px solid #B4540F; }
+div[class*="st-key-alert-yellow"] { background: #FDF6E3; border-left: 4px solid #D4A017; }
+div[class*="st-key-alert-orange"] { background: #EBF1FE; border-left: 4px solid #1D4ED8; }
 div[class*="st-key-alert-info"] { background: var(--soft-bg); border-left: 4px solid #5B6472; }
 .legend-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin: 0 5px 0 12px; }
 [data-testid="stDownloadButton"] button { border: 0; border-radius: .6rem; background: var(--soft-dark); color: white; box-shadow: 0 4px 7px -1px rgb(0 0 0 / 10%); }
@@ -184,51 +184,16 @@ button[data-baseweb="tab"][aria-selected="true"] { background: white; box-shadow
   .stButton > button, .st-key-sidebar-nav [role="radiogroup"] > label { transition: none; }
 }
 
-.st-key-sidebar-nav [role="radiogroup"] > label:nth-child(1)::before, .st-key-sidebar-nav [role="radiogroup"] > div:nth-child(1) label::before { content: "⌂"; }
-.st-key-sidebar-nav [role="radiogroup"] > label:nth-child(2)::before, .st-key-sidebar-nav [role="radiogroup"] > div:nth-child(2) label::before { content: "▦"; }
-.st-key-sidebar-nav [role="radiogroup"] > label:nth-child(3)::before, .st-key-sidebar-nav [role="radiogroup"] > div:nth-child(3) label::before { content: "▤"; }
-.st-key-sidebar-nav [role="radiogroup"] > label:nth-child(4)::before, .st-key-sidebar-nav [role="radiogroup"] > div:nth-child(4) label::before { content: "▥"; }
-.st-key-sidebar-nav [role="radiogroup"] > label:nth-child(5)::before, .st-key-sidebar-nav [role="radiogroup"] > div:nth-child(5) label::before { content: "▥"; }
-.st-key-sidebar-nav [role="radiogroup"] > label:nth-child(6)::before, .st-key-sidebar-nav [role="radiogroup"] > div:nth-child(6) label::before { content: "⚑"; }
-.st-key-sidebar-nav [role="radiogroup"] > label:nth-child(7)::before, .st-key-sidebar-nav [role="radiogroup"] > div:nth-child(7) label::before { content: "✧"; }
-.st-key-sidebar-nav [data-testid="stRadioOption"] { box-sizing: border-box; }
-.st-key-sidebar-nav [data-testid="stRadioOption"] > div { flex: 1; min-width: 0; }
-.st-key-sidebar-nav [data-testid="stRadioOption"][data-disabled] { opacity: .45; cursor: not-allowed; }
-.st-key-sidebar-nav [data-testid="stRadioOption"][data-disabled]:hover { background: transparent; }
-
-/* Accessible native actions share the KPI card's horizontal layout. */
-[class*="st-key-metric-"] { background: white; border-radius: 1rem; padding: 1.1rem 1.2rem; min-height: 140px; box-shadow: 0 20px 27px 0 rgb(0 0 0 / 5%); }
-[class*="st-key-metric-"] .soft-metric { padding: 0; min-height: 0; background: transparent; box-shadow: none; }
-[class*="st-key-metric-"] [data-testid="stHorizontalBlock"] { flex-wrap: nowrap; }
-[class*="st-key-metric-"] [data-testid="stColumn"]:last-child { min-width: 46px; flex: 0 0 46px; }
-[class*="st-key-metric-"] [data-testid="stButton"] { width: 46px; }
-[class*="st-key-metric-"] [data-testid="stButton"] button { width: 46px; height: 46px; padding: 0; border-radius: .75rem; }
-[class*="st-key-metric-"] [data-testid="stButton"] button [data-testid="stMarkdownContainer"] { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-[class*="st-key-metric-"] [data-testid="stButton"] button:focus-visible { outline: 3px solid #8BADF2; outline-offset: 3px; }
-
-/* Small labelled widgets inside a single decision or information block. */
-.detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 16px; background: #F4F7FC; border: 1px solid #E2E8F3; border-radius: 14px; margin: 4px 0 10px; }
-.detail-cell { min-width: 0; padding: 15px 17px; background: #FFFFFFD9; border: 1px solid #E2E8F3; border-radius: 10px; }
-.detail-cell > span { display: block; font-size: .73rem; line-height: 1.4; font-weight: 700; color: #5B6B84; margin-bottom: 8px; }
-.detail-cell p { font-size: .9rem; line-height: 1.65; color: #243652; margin: 0; overflow-wrap: anywhere; }
-.detail-cell p + p { margin-top: .75rem; }
-.detail-compact { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
-.detail-compact .detail-cell p { font-weight: 600; font-size: .92rem; }
-.detail-success { background: #EBF7F0; border-color: #CFE7D9; }
-.detail-success .detail-cell { border-color: #D8EDE1; }
-.detail-warning { background: #FFF7EA; border-color: #F2E3C5; }
-.detail-warning .detail-cell { border-color: #F2E6D0; }
-.detail-danger { background: #FFF0F0; border-color: #F2D3D3; }
-.detail-danger .detail-cell { border-color: #F2DDDD; }
-[class*="st-key-task-"] [data-testid="stExpander"] summary p { font-size: .95rem !important; line-height: 1.65 !important; }
-[class*="st-key-task-"] [data-testid="stExpander"] summary { padding: 1rem 1.15rem; }
-[class*="st-key-chart-panel-"] [data-testid="stRadio"] { padding: 6px 12px; border: 1px solid #E2E8F3; background: #F4F7FC; border-radius: 10px; width: fit-content; margin-bottom: 10px; }
-/* Use the persistent switch above each plot instead of Streamlit's internal data view. */
-[class*="st-key-chart-panel-"] button[aria-label="Show data"],
-[class*="st-key-chart-panel-"] button[title="Show data"] { display: none; }
-[data-testid="stDataFrame"] { border: 1px solid #E2E8F3; box-shadow: 0 4px 15px #294DA608; }
-@media (max-width: 768px) {
-  .detail-grid { grid-template-columns: 1fr; padding: 10px; }
-  .detail-compact { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .detail-cell { padding: 12px; }
+/* Подписи загрузчика у Streamlit английские и настройкой не переводятся:
+   прячем размером шрифта и подставляем свои. */
+[data-testid="stFileUploaderDropzoneInstructions"] span { font-size: 0 !important; }
+[data-testid="stFileUploaderDropzoneInstructions"] span::after {
+  content: "Файл .xlsx, до 200 МБ";
+  font-size: .8rem;
+  color: var(--soft-muted);
+}
+[data-testid="stFileUploader"] button [data-testid="stMarkdownContainer"] p { font-size: 0 !important; }
+[data-testid="stFileUploader"] button [data-testid="stMarkdownContainer"] p::after {
+  content: "Выбрать файл";
+  font-size: .85rem;
 }

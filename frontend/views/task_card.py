@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
+import pandas as pd
 import streamlit as st
 
 from .components import detail_grid
 from .labels import decision_label, hours, sprint_range
+from .text import collapse_task_lists
 
 # Числа решения (reason_facts) человеческими словами; прочие ключи служебные.
 FACT_LABELS = {
@@ -68,12 +70,37 @@ def _render_risks(risks: list[dict[str, Any]]) -> None:
     st.markdown("**Риски по задаче**")
     for risk in risks:
         title = RISK_TITLES.get(risk.get("type"), "Риск")
-        detail_grid([(title, risk.get("description", "")),
-                     ("Рекомендация", risk.get("recommendation"))],
-                    tone="danger" if risk.get("type") == "red" else "warning")
+        description, _ = collapse_task_lists(risk.get("description", ""))
+        st.markdown(f"- **{title}.** {description}")
 
 
-def render_task_card(task: dict[str, Any], risks: list[dict[str, Any]] | None = None) -> None:
+def _render_manual_controls(task: dict[str, Any], on_change: Any) -> None:
+    """Ручное решение по задаче: снять с квартала или вернуть.
+
+    Планировщик предлагает, решает человек: PI-планирование — это переговоры.
+    После решения план пересобирается, освободившаяся ёмкость уходит другим.
+    """
+    if on_change is None or task.get("status") == "Done":
+        return
+    tid = task.get("task_id")
+    manual = st.session_state.get("manual_defer", {})
+    if tid in manual:
+        st.caption("Задача снята с квартала вручную.")
+        if st.button("Вернуть в планирование", key=f"manual_return_{tid}", width="stretch"):
+            manual.pop(tid, None)
+            on_change()
+    else:
+        with st.popover("Снять с квартала", width="stretch"):
+            note = st.text_input("Причина (попадёт в план и выгрузку)",
+                                 key=f"manual_note_{tid}",
+                                 placeholder="например: заказчик отложил до следующего квартала")
+            if st.button("Подтвердить", key=f"manual_defer_{tid}", width="stretch"):
+                manual[tid] = note.strip() or "решение руководителя"
+                on_change()
+
+
+def render_task_card(task: dict[str, Any], risks: list[dict[str, Any]] | None = None,
+                     on_manual_change: Any = None) -> None:
     """
     Отрисовывает детальную карточку задачи.
 
@@ -83,6 +110,8 @@ def render_task_card(task: dict[str, Any], risks: list[dict[str, Any]] | None = 
     Args:
         task: Словарь с данными задачи (схема PlannedTask).
         risks: алерты, которые касаются этой задачи (см. plan_view.task_risks).
+        on_manual_change: что вызвать после ручного решения по задаче; None —
+            кнопки не показываются (например, в снимке Недели 0).
     """
     decision = task.get("decision")
 
@@ -109,6 +138,7 @@ def render_task_card(task: dict[str, Any], risks: list[dict[str, Any]] | None = 
 
         _render_facts(task)
         _render_risks(risks or [])
+        _render_manual_controls(task, on_manual_change)
 
         # 3. Трудозатраты и зависимости
         col_labor, col_deps = st.columns(2)
@@ -134,12 +164,18 @@ def render_task_card(task: dict[str, Any], risks: list[dict[str, Any]] | None = 
             allocation = task.get("allocation")
             if allocation and isinstance(allocation, dict):
                 with st.expander("Кто и когда работает"):
-                    for s, engs in allocation.items():
-                        if isinstance(engs, dict):
-                            eng_str = ", ".join(f"{e} ({hours(h)} ч)" for e, h in engs.items())
-                            detail_grid([(f"Спринт {s}", eng_str)])
+                    # Таблица вместо серых подписей: читается на экране и на проекторе
+                    rows = []
+                    for sprint, engineers in allocation.items():
+                        if isinstance(engineers, dict):
+                            people = ", ".join(f"{eng} — {hours(value)} ч"
+                                               for eng, value in engineers.items())
+                            total = sum(float(v or 0) for v in engineers.values())
                         else:
-                            st.caption(f"Спринт {s}: {engs}")
+                            people, total = str(engineers), 0.0
+                        rows.append({"Спринт": sprint, "Кто работает": people,
+                                     "Часов": hours(total)})
+                    st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
 
         with col_deps:
             st.markdown("**Зависимости**")

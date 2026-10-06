@@ -42,7 +42,7 @@ def _click(at: AppTest, key: str) -> None:
 def test_upload_replace_delete_and_all_pages() -> None:
     at = AppTest.from_file(str(ROOT / "frontend" / "app.py"), default_timeout=300)
     at.run()
-    _upload(at, "Master", MASTER)
+    _upload(at, "Мастер-датасет", MASTER)
     # Overview actions switch the same navigation state as the sidebar.
     _click(at, "overview_plan")
     assert at.sidebar.radio(key="navigation").value == "План (PI-цикл)"
