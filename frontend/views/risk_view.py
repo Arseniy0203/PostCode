@@ -63,18 +63,18 @@ def _render_alert_card(alert: dict[str, Any], index: Any) -> None:
         moment = "держится с Недели 0" if not since else f"держится со спринта {since}"
     description, hidden = collapse_task_lists(alert.get("description", ""))
     advice, hidden_advice = collapse_task_lists(alert.get("recommendation", ""))
-    text = f"{_title(alert)}\n\n{description}"
-    if advice:
-        text += f"\n\n**Что сделать:** {advice}"
     alert_type = alert.get("type") if alert.get("type") in TYPE_COLORS else "info"
     key = re.sub(r"[^0-9A-Za-z_-]+", "-", f"alert-{alert_type}-{alert.get('category')}-{index}")
+    tone = {"red": "danger", "yellow": "warning"}.get(alert_type, "neutral")
     with st.container(key=key):
-        st.markdown(text)
+        st.markdown(f"{_title(alert)} · :gray[{moment}]")
+        # Описание и рекомендация — отдельные подписанные блоки: сплошной абзац
+        # с цифрами и перечнем задач читать невозможно
+        detail_grid([("Что происходит", description), ("Что сделать", advice)], tone=tone)
         tasks = sorted(set(hidden) | set(hidden_advice))
         if tasks:
-            with st.expander(f"Все задачи · {len(tasks)}"):
+            with st.expander(f"Все затронутые задачи · {len(tasks)}"):
                 st.markdown(", ".join(f"`{task}`" for task in tasks))
-        st.markdown(f":gray[{moment}]")
 
 
 def _render_list(alerts: list[dict[str, Any]], empty: str) -> None:

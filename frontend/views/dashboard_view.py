@@ -112,16 +112,27 @@ def render_dashboard_view(plan: dict[str, Any], alerts: list[dict[str, Any]], st
     left, right = st.columns([1.4, 1], gap="large")
     with left, st.container(border=True, key="soft-card-teams"):
         st.subheader("Команды и задачи")
-        st.caption(f"{len(teams)} команд работают над планом квартала")
+        st.caption(f"{len(teams)} команд работают над планом квартала. Наведите курсор на команду — покажем её инженеров.")
         grouped = defaultdict(list)
         for task in tasks:
             grouped[task.get("team_id") or "Без команды"].append(task)
+        # Кто в команде — из звёздной карты: при наведении на строку видно состав,
+        # иначе за названием команды не стоит ни одного человека
+        people = defaultdict(list)
+        for engineer in (starmap or {}).get("engineers", []) or []:
+            for team_name in engineer.get("teams") or []:
+                people[team_name].append(
+                    f"{engineer.get('engineer_id')} — {engineer.get('role') or 'роль не указана'}")
         rows = []
         for i, (team, items) in enumerate(sorted(grouped.items()), 1):
             completed = sum(is_done(t) for t in items)
             pct = round(completed / len(items) * 100)
             sp = sum(float(t.get("estimation_sp") or 0) for t in items)
-            rows.append(f'<tr><td><span class="soft-team">{i:02}</span><strong>{escape(str(team))}</strong></td>'
+            staff = sorted(people.get(team) or [])
+            hint = escape("\n".join(staff)) if staff else "Состав команды не найден в датасете"
+            rows.append(f'<tr title="{hint}"><td><span class="soft-team">{i:02}</span>'
+                        f'<strong>{escape(str(team))}</strong>'
+                        f'<small>{len(staff)} инженеров</small></td>'
                         f'<td>{len(items)}</td><td>{sp:g} SP</td><td>{pct}%'
                         f'<div class="soft-progress"><span style="width:{pct}%"></span></div></td></tr>')
         st.html('<div class="soft-table-wrap"><table class="soft-table"><thead><tr>'

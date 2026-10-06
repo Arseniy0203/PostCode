@@ -6,6 +6,8 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
+from .components import chart_table, detail_grid
+
 COLOR_OVER = "#B3261E"   # приглушённый красный — как у критических рисков
 COLOR_PLAN = "#294DA6"   # синий из логотипа
 COLOR_RULE = "#71717a"
@@ -44,13 +46,21 @@ def _polish(chart):
 
 
 def _team_chart(teams: list[dict[str, Any]]):
-    rows = [{"Команда": t["team_id"], "Вариант": name, "Загрузка, %": t[field] or 0}
-            for t in teams for name, field in [("Все задачи сразу", "all_at_once_pct"),
-                                               ("По плану", "plan_peak_pct")]]
+    """Две полосы на команду: что будет при старте всего сразу и что в плане."""
+    order = ["Все задачи сразу", "По плану"]
+    rows = []
+    for team in teams:
+        rows.append({"Команда": team["team_id"], "Вариант": order[0],
+                     "Загрузка, %": team["all_at_once_pct"] or 0,
+                     "Детали": f"{team['backlog_sp']:g} SP бэклога при ёмкости "
+                               f"{team['capacity_sp']:g} SP за спринт"})
+        rows.append({"Команда": team["team_id"], "Вариант": order[1],
+                     "Загрузка, %": team["plan_peak_pct"] or 0,
+                     "Детали": f"самый загруженный спринт плана, ёмкость "
+                               f"{team['capacity_sp']:g} SP"})
     data = pd.DataFrame(rows)
-    order = ["Всё сразу в спринте 1", "План: самый загруженный спринт"]
     bars = alt.Chart(data).mark_bar(
-        cornerRadiusEnd=BAR_RADIUS, height=16, stroke=COLOR_SURFACE, strokeWidth=2,
+        cornerRadiusEnd=BAR_RADIUS, height=13, stroke=COLOR_SURFACE, strokeWidth=1.5,
     ).encode(
         y=alt.Y("Команда:N", title=None, sort="-x", axis=alt.Axis(labelLimit=200)),
         yOffset=alt.YOffset("Вариант:N", sort=order),
@@ -59,17 +69,15 @@ def _team_chart(teams: list[dict[str, Any]]):
         color=alt.Color("Вариант:N", sort=order,
                         scale=alt.Scale(domain=order, range=[COLOR_OVER, COLOR_PLAN]),
                         legend=alt.Legend(orient="top", title=None, labelLimit=0, offset=4)),
-        tooltip=["Команда", "Вариант", "Загрузка, %", "SP"],
+        tooltip=["Команда", "Вариант", "Загрузка, %", "Детали"],
     )
-    # Значение у конца столбца: контраст оранжевого к белому ниже 3:1,
-    # поэтому величина читается цифрой, а не только длиной
-    labels = bars.mark_text(align="left", dx=6, fontSize=LABEL_FONT, color=COLOR_INK).encode(
+    # Значение цифрой у конца полосы: длина сама по себе не даёт точности,
+    # а разброс от 98 до 625% сжимает короткие полосы
+    labels = bars.mark_text(align="left", dx=5, fontSize=LABEL_FONT, color=COLOR_INK).encode(
         text=alt.Text("Загрузка, %:Q", format=".0f"), color=alt.value(COLOR_INK))
     rule = alt.Chart(pd.DataFrame({"x": [100]})).mark_rule(
         strokeDash=[4, 4], color=COLOR_RULE, strokeWidth=1).encode(x="x:Q")
-    # Подпись к пунктиру не ставим: она попадает в середину графика. Что такое
-    # 100%, сказано в тексте над графиком.
-    return _style((bars + labels + rule).properties(height=alt.Step(44)))
+    return _style((bars + labels + rule).properties(height=alt.Step(32)))
 
 
 def _role_chart(roles: list[dict[str, Any]]) -> alt.Chart:
@@ -80,7 +88,7 @@ def _role_chart(roles: list[dict[str, Any]]) -> alt.Chart:
                   f"{r['people']} чел.",
         "Перегрузка": (r["all_at_once_pct"] or 0) > 100,
     } for r in roles])
-    bars = alt.Chart(data).mark_bar(cornerRadiusEnd=BAR_RADIUS, height=16).encode(
+    bars = alt.Chart(data).mark_bar(cornerRadiusEnd=BAR_RADIUS, height=14).encode(
         y=alt.Y("Роль:N", title=None, sort="-x", axis=alt.Axis(labelLimit=260)),
         x=alt.X("Нужно от фонда спринта, %:Q", title="Часы бэклога от фонда роли за спринт, %",
                 axis=alt.Axis(format="d")),
@@ -91,7 +99,7 @@ def _role_chart(roles: list[dict[str, Any]]) -> alt.Chart:
         text=alt.Text("Нужно от фонда спринта, %:Q", format=".0f"), color=alt.value(COLOR_INK))
     rule = alt.Chart(pd.DataFrame({"x": [100]})).mark_rule(
         strokeDash=[4, 4], color=COLOR_RULE, strokeWidth=1).encode(x="x:Q")
-    return _style((bars + labels + rule).properties(height=alt.Step(26)))
+    return _style((bars + labels + rule).properties(height=alt.Step(24)))
 
 
 def render_overload_view(overload: dict[str, Any] | None) -> None:
@@ -166,7 +174,10 @@ def render_overload_view(overload: dict[str, Any] | None) -> None:
             text = heat.mark_text(fontSize=LABEL_FONT).encode(
                 text=alt.Text("pct:Q", format=".0f"),
                 color=alt.condition(alt.datum.pct > 60, alt.value("#FFFFFF"), alt.value("#1E293B")))
-            st.altair_chart((heat + text).properties(height=alt.Step(30)), width="stretch")
+            table = (load.pivot(index="team_id", columns="Спринт", values="pct")
+                     .reset_index().rename(columns={"team_id": "Команда"}))
+            chart_table(_style((heat + text).properties(height=alt.Step(30))), table,
+                        key="sprint-load")
             st.caption("Процент ёмкости команды по SP в каждом спринте плана Недели 0.")
             idle = sorted(load.loc[(load["sprint"] == load["sprint"].max()) & (load["pct"] == 0),
                                    "team_id"].unique())
