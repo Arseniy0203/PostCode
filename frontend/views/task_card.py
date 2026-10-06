@@ -74,7 +74,7 @@ def _render_risks(risks: list[dict[str, Any]]) -> None:
         st.markdown(f"- **{title}.** {description}")
 
 
-def _render_manual_controls(task: dict[str, Any], on_change: Any) -> None:
+def _render_manual_controls(task: dict[str, Any], on_change: Any, scope: str = "") -> None:
     """Ручное решение по задаче: снять с квартала или вернуть.
 
     Планировщик предлагает, решает человек: PI-планирование — это переговоры.
@@ -83,24 +83,27 @@ def _render_manual_controls(task: dict[str, Any], on_change: Any) -> None:
     if on_change is None or task.get("status") == "Done":
         return
     tid = task.get("task_id")
+    # Одна и та же задача рисуется и в поиске, и в сетке спринтов: без разного
+    # префикса Streamlit падает с ошибкой «повторяющийся ключ элемента»
+    prefix = f"{scope}-{tid}" if scope else str(tid)
     manual = st.session_state.get("manual_defer", {})
     if tid in manual:
         st.caption("Задача снята с квартала вручную.")
-        if st.button("Вернуть в планирование", key=f"manual_return_{tid}", width="stretch"):
+        if st.button("Вернуть в планирование", key=f"manual_return_{prefix}", width="stretch"):
             manual.pop(tid, None)
             on_change()
     else:
         with st.popover("Снять с квартала", width="stretch"):
             note = st.text_input("Причина (попадёт в план и выгрузку)",
-                                 key=f"manual_note_{tid}",
+                                 key=f"manual_note_{prefix}",
                                  placeholder="например: заказчик отложил до следующего квартала")
-            if st.button("Подтвердить", key=f"manual_defer_{tid}", width="stretch"):
+            if st.button("Подтвердить", key=f"manual_defer_{prefix}", width="stretch"):
                 manual[tid] = note.strip() or "решение руководителя"
                 on_change()
 
 
 def render_task_card(task: dict[str, Any], risks: list[dict[str, Any]] | None = None,
-                     on_manual_change: Any = None) -> None:
+                     on_manual_change: Any = None, scope: str = "") -> None:
     """
     Отрисовывает детальную карточку задачи.
 
@@ -111,7 +114,9 @@ def render_task_card(task: dict[str, Any], risks: list[dict[str, Any]] | None = 
         task: Словарь с данными задачи (схема PlannedTask).
         risks: алерты, которые касаются этой задачи (см. plan_view.task_risks).
         on_manual_change: что вызвать после ручного решения по задаче; None —
-            кнопки не показываются (например, в снимке Недели 0).
+            кнопки не показываются (например, в демо-режиме).
+        scope: где нарисована карточка («поиск», «спринт-3») — чтобы ключи
+            кнопок не совпадали у одной задачи в разных местах страницы.
     """
     decision = task.get("decision")
 
@@ -138,7 +143,7 @@ def render_task_card(task: dict[str, Any], risks: list[dict[str, Any]] | None = 
 
         _render_facts(task)
         _render_risks(risks or [])
-        _render_manual_controls(task, on_manual_change)
+        _render_manual_controls(task, on_manual_change, scope)
 
         # 3. Трудозатраты и зависимости
         col_labor, col_deps = st.columns(2)

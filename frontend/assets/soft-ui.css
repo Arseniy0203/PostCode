@@ -197,3 +197,64 @@ button[data-baseweb="tab"][aria-selected="true"] { background: white; box-shadow
   content: "Выбрать файл";
   font-size: .85rem;
 }
+
+/* --- Блоки подробностей: вместо сплошного абзаца — подписанные панели ------ */
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: .75rem;
+  margin: .4rem 0 1rem;
+}
+.detail-grid.detail-compact { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: .5rem; }
+.detail-cell {
+  background: #fff;
+  border: 1px solid var(--soft-line);
+  border-left: 3px solid var(--soft-primary);
+  border-radius: .75rem;
+  padding: .8rem .95rem;
+  box-shadow: 0 2px 6px rgb(30 41 59 / 4%);
+}
+.detail-cell > span {
+  display: block;
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--soft-muted);
+  margin-bottom: .35rem;
+}
+.detail-cell p { margin: 0 0 .4rem; font-size: .85rem; line-height: 1.55; color: var(--soft-ink); }
+.detail-cell p:last-child { margin-bottom: 0; }
+.detail-success .detail-cell { border-left-color: #1B6D45; }
+.detail-warning .detail-cell { border-left-color: #D4A017; }
+.detail-danger .detail-cell { border-left-color: #B3261E; }
+
+/* Переключатель «График / Таблица» — компактный, у левого края */
+div[class*="st-key-chart-panel-"] [role="radiogroup"] { gap: .35rem; margin-bottom: .4rem; }
+div[class*="st-key-chart-panel-"] [role="radiogroup"] label p { font-size: .75rem; }
+
+/* Подписи: тот же серый, но на полтона темнее — читается на светлом фоне */
+[data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] p { color: #46566E; }
+
+/* Строки задач в сетке спринтов: шрифт крупнее подписи свёрнутого блока */
+div[class*="st-key-task-"] [data-testid="stExpander"] summary p { font-size: .88rem; }
+
+/* Родная панель графика предлагает «показать таблицу» без пути назад —
+   переключатель рядом с графиком делает то же самое и обратимо */
+[data-testid="stElementToolbar"] { display: none !important; }
+
+/* Состав команды — подсказкой при наведении на строку таблицы */
+.soft-table tbody tr[title] { cursor: help; }
+.soft-table tbody tr[title]:hover { background: #F4F7FC; }
+.soft-table td small { display: block; color: var(--soft-muted); font-size: .68rem; margin-top: .15rem; }
+
+
+/* Своя иконка у каждого раздела: одинаковые квадраты не помогали ориентироваться.
+   Каждый пункт radio обёрнут в свой div, поэтому считаем по обёрткам. */
+.st-key-sidebar-nav [role="radiogroup"] > div:nth-child(1) [data-testid="stRadioOption"]::before { content: "⌂"; }
+.st-key-sidebar-nav [role="radiogroup"] > div:nth-child(2) [data-testid="stRadioOption"]::before { content: "▦"; }
+.st-key-sidebar-nav [role="radiogroup"] > div:nth-child(3) [data-testid="stRadioOption"]::before { content: "☰"; }
+.st-key-sidebar-nav [role="radiogroup"] > div:nth-child(4) [data-testid="stRadioOption"]::before { content: "◎"; }
+.st-key-sidebar-nav [role="radiogroup"] > div:nth-child(5) [data-testid="stRadioOption"]::before { content: "▥"; }
+.st-key-sidebar-nav [role="radiogroup"] > div:nth-child(6) [data-testid="stRadioOption"]::before { content: "⚑"; }
+.st-key-sidebar-nav [role="radiogroup"] > div:nth-child(7) [data-testid="stRadioOption"]::before { content: "✳"; }

@@ -197,7 +197,7 @@ def render_plan_view(plan: dict[str, Any], view_mode_label: str,
     if picked != NOT_SELECTED:
         chosen = task_mapping[picked]
         render_task_card(chosen, task_risks(alerts).get(chosen.get("task_id")) or [],
-                         on_manual_change)
+                         on_manual_change, scope="search")
 
     st.markdown("---")
 
@@ -269,4 +269,5 @@ def render_plan_view(plan: dict[str, Any], view_mode_label: str,
                          + (f" · {mark}" if mark else ""))
                 with st.container(key=key):
                     with st.expander(label):
-                        render_task_card(t, risks, on_manual_change)
+                        render_task_card(t, risks, on_manual_change,
+                                         scope=f"sprint{sprint_idx}")

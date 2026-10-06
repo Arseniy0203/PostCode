@@ -141,4 +141,4 @@ def test_demo_snapshots_navigation_and_return_paths():
     assert not at.session_state["calculated_plans"]
     assert not at.session_state["demo_mode"]
     assert at.sidebar.radio(key="navigation").disabled
-    assert any("Master" in u.label for u in at.file_uploader)
+    assert any("Мастер-датасет" in u.label for u in at.file_uploader)

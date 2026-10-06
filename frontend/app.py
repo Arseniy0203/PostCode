@@ -31,7 +31,7 @@ from backend.recalculation.pipeline import (
     week0_from_excel,
 )
 
-from frontend.theme import (PAGES, PAGE_LABELS, inject_custom_css, metric_card,
+from frontend.theme import (PAGES, PAGE_LABELS, icon, inject_custom_css, metric_card,
                    render_brand, render_header, render_welcome, render_footer, render_title, navigate)
 from frontend.demo import DEMO_SCENARIOS, demo_snapshots
 from views.kpi_view import render_kpi_view
@@ -444,7 +444,11 @@ def main() -> None:
             demo_requested = col_demo.button("Открыть пример на демо-данных", key="load_demo",
                                              width="stretch")
         if demo_requested:
-            _load_demo(demo_path)
+            try:
+                start_demo()
+                st.rerun()
+            except Exception as exc:  # noqa: BLE001 — показываем причину, не роняем страницу
+                st.error(f"Не удалось подготовить демо: {exc}")
         with st.sidebar:
             st.html(f'<div class="soft-sidebar-note">{icon("file")}<strong>Начните с данных</strong>'
                     '<p>Загрузите мастер-датасет, чтобы открыть план, риски и карту компетенций.</p></div>')
@@ -466,6 +470,9 @@ def main() -> None:
                 st.session_state.master_name = uploaded_file.name
                 st.session_state.master_bytes = uploaded_file.getvalue()
                 st.session_state.fact_files = {}
+                # Свой датасет — не демо; после загрузки сразу открываем обзор квартала
+                st.session_state.update(demo_mode=False, snapshot="baseline",
+                                        next_page="Обзор", manual_defer={})
                 st.session_state.calculated_plans["baseline"] = {
                     "plan": base_state["plan"],
                     "alerts": base_state["alerts"],
@@ -482,19 +489,32 @@ def main() -> None:
 
     demo = st.session_state.demo_mode
     with st.sidebar:
-        section_label("Данные квартала")
+        section_label("Демо-режим" if demo else "Данные квартала")
 
-    with st.sidebar.expander("Мастер-датасет · Неделя 0", expanded=False):
-        st.caption(st.session_state.get("master_name") or "Датасет загружен.")
-        if st.button("Сбросить весь план и начать заново", width="stretch"):
-            st.session_state.calculated_plans = {}
-            st.session_state.master_dataset = None
-            st.session_state.fact_files = {}
-            st.session_state.manual_defer = {}
-            _reset_uploaders()
-            st.rerun()
-
-    render_fact_uploads(st.session_state.master_dataset)
+    if demo:
+        # В демо спринты уже рассчитаны — грузить нечего, можно только выбрать
+        # сценарий и отматывать срезы
+        scenario = st.sidebar.selectbox("Сценарий квартала", list(DEMO_SCENARIOS),
+                                        format_func=DEMO_SCENARIOS.get, key="demo_scenario")
+        if scenario != st.session_state.get("demo_loaded_scenario"):
+            try:
+                master, snapshots = demo_snapshots(scenario)
+                # Срез не сбрасываем: удобно сравнить тот же спринт в другом сценарии
+                st.session_state.update(master_dataset=master, calculated_plans=snapshots,
+                                        demo_loaded_scenario=scenario)
+                st.rerun()
+            except Exception as exc:  # noqa: BLE001
+                st.sidebar.error(f"Не удалось загрузить сценарий: {exc}")
+        st.sidebar.caption("Неделя 0 и все шесть спринтов уже посчитаны — выбирайте срез ниже. "
+                           "Данные демонстрационные.")
+        st.sidebar.button("Выйти из демо и загрузить свой файл", key="exit_demo",
+                          on_click=reset_workspace, width="stretch")
+    else:
+        with st.sidebar.expander("Мастер-датасет · Неделя 0", expanded=False):
+            st.caption(st.session_state.get("master_name") or "Датасет загружен.")
+            st.button("Сбросить весь план и начать заново", key="reset_plan",
+                      on_click=reset_workspace, width="stretch")
+        render_fact_uploads(st.session_state.master_dataset)
 
     st.sidebar.markdown("---")
 
@@ -528,7 +548,8 @@ def main() -> None:
             _rebuild_with_manual()
             st.rerun()
 
-        render_plan_view(plan_dict, selected_mode_label, alerts, starmap, on_manual_change)
+        render_plan_view(plan_dict, selected_mode_label, alerts, starmap,
+                         None if demo else on_manual_change)
     elif page == "Всё сразу или по плану":
         render_overload_view((st.session_state.master_dataset or {}).get("overload"))
     elif page == "Риски и Алерты":
